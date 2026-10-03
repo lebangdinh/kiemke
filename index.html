@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="vi">
 <head>
@@ -166,7 +165,7 @@
 <body>
   <header class="topbar">
     <div class="topinner">
-      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v6.9 Phiên chung</small></div>
+      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v6.10 Phiên chung</small></div>
       <div class="session-pill"><b id="topSession">Chưa có phiên</b><span id="topStatus">—</span></div>
       <div class="cloudbox no-print"><span id="cloudDot" class="cloud-dot"></span><span id="cloudStatus" class="cloudtext">Chưa kết nối</span><button id="cloudAuthBtn" class="cloudbtn" onclick="cloudAuthAction()">🔑 Đăng nhập</button></div>
     </div>
@@ -193,11 +192,11 @@
     <section id="tab-count" class="tab active">
       <div id="cloudBanner" class="sync-banner off no-print"><div class="txt"><b>☁️ Đồng bộ chưa hoạt động</b><span>Đăng nhập Google để các điện thoại dùng chung data và phiên kiểm kê.</span></div><button class="btn primary" onclick="cloudSignIn()">Đăng nhập</button></div>
       <div class="card no-print" id="workScopeCard" style="margin-bottom:14px;border-color:#c7d2fe;background:linear-gradient(135deg,#eef2ff,#fff)">
-        <div class="row"><div><h3 style="margin:0">🎯 Phạm vi đang kiểm</h3><div class="small muted" style="margin-top:4px">Kho được cố định theo phiên. Mỗi nhân viên có thể tự chọn ngành / nhóm hàng để chia nhau kiểm.</div></div><div class="spacer"></div><span id="scopeBadge" class="badge b-blue">Chưa chọn kho</span></div>
+        <div class="row"><div><h3 style="margin:0">🎯 Phạm vi đang kiểm</h3><div class="small muted" style="margin-top:4px">Kho được cố định theo phiên. Ngành / Nhóm hàng là tùy chọn để chia việc; để Tất cả vẫn kiểm được toàn kho.</div></div><div class="spacer"></div><span id="scopeBadge" class="badge b-blue">Chưa chọn kho</span></div>
         <div class="scope-grid">
           <div class="field warehouse-field"><label>Kho / Siêu thị</label><div class="scope-warehouse-display"><span id="scopeWarehouseText">Chưa chọn kho</span><div class="spacer"></div><button class="btn outline" style="padding:7px 9px" onclick="switchWarehouseFlow()">🏬 Đổi kho</button></div></div>
-          <div class="field"><label>Ngành hàng</label><select id="scopeCategory" onchange="changeWorkScope()"><option value="">Tất cả ngành hàng</option></select></div>
-          <div class="field"><label>Nhóm hàng</label><select id="scopeGroup" onchange="changeWorkScope()"><option value="">Tất cả nhóm hàng</option></select></div>
+          <div class="field"><label>Ngành hàng <span class="muted" style="font-weight:700">(tùy chọn)</span></label><select id="scopeCategory" onchange="changeWorkScope()"><option value="">Tất cả ngành hàng</option></select></div>
+          <div class="field"><label>Nhóm hàng <span class="muted" style="font-weight:700">(tùy chọn)</span></label><select id="scopeGroup" onchange="changeWorkScope()"><option value="">Tất cả nhóm hàng</option></select></div>
         </div>
         <div id="scopeHint" class="small muted" style="margin-top:8px"></div>
       </div>
@@ -2327,6 +2326,78 @@ attachCloudSessionIndex=function(){
 for(const s of Object.values(state.sessions||{}))normalizeLegacyPausedSession(s);
 saveState();
 renderAll();
+
+/* ===== v6.10 OPTIONAL SCOPE + EMPLOYEE CLOSE ===== */
+const _v610SessionMetaForCloud=sessionMetaForCloud;
+sessionMetaForCloud=function(s){
+  const m=_v610SessionMetaForCloud(s);
+  if(s?.closedBy)m.closedBy=s.closedBy;
+  return m
+};
+
+function closerLabel(s){
+  const a=s?.closedBy||{};
+  return [a.employeeId,a.name].filter(Boolean).join(' - ')||a.email||'';
+}
+
+closeCurrentSession=async function(){
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return;
+  const s=currentSession();
+  if(!s){toast('Chưa có phiên kiểm kê','err');return}
+  if(s.status==='closed'){toast('Phiên này đã chốt.','err');return}
+  const st=statsFor(s);
+  const who=profileComplete(cloudProfile)?employeeLabel(cloudProfile):(cloudUser?.email||'Nhân viên hiện tại');
+  const remaining=Number(st.unchecked||0);
+  const msg=remaining>0
+    ? `Còn <b>${remaining.toLocaleString('vi-VN')}</b> mã chưa kiểm.<br>Sau khi chốt, các mã chưa kiểm sẽ được tính là <b>0</b> trong báo cáo chênh lệch.<br><br>Người chốt: <b>${esc(who)}</b><br><br>Sau khi chốt, phiên sẽ khóa kiểm kê cho tất cả nhân viên.`
+    : `Tất cả mã trong phạm vi kho đã có kết quả kiểm kê.<br><br>Người chốt: <b>${esc(who)}</b><br><br>Sau khi chốt, phiên sẽ khóa kiểm kê cho tất cả nhân viên.`;
+  const ok=await askConfirm('Chốt phiên kiểm kê',msg,'✅ Chốt phiên');
+  if(!ok)return;
+  s.status='closed';
+  s.closedAt=nowIso();
+  s.closedBy=typeof cloudActor==='function'?cloudActor():{name:who,email:cloudUser?.email||''};
+  s.updatedAt=nowIso();
+  saveState();
+  if(cloudUser&&cloudPermitted){
+    try{await cloudWriteSessionMeta(s)}catch(e){console.error(e)}
+  }
+  try{if(scannerRunning)await stopScanner()}catch{}
+  renderAll();
+  toast('✅ Đã chốt phiên kiểm kê','ok')
+};
+
+const _v610RenderSessions=renderSessions;
+renderSessions=function(){
+  _v610RenderSessions();
+  const el=document.getElementById('sessionList');
+  if(!el)return;
+  for(const s of Object.values(state.sessions||{})){
+    if(s.status!=='closed'||!s.closedBy)continue;
+    const card=[...el.querySelectorAll('.session-card')].find(x=>x.innerText.includes(s.name));
+    if(!card)continue;
+    const meta=card.querySelector('.session-meta');
+    const label=closerLabel(s);
+    if(meta&&label&&!meta.innerText.includes('Chốt bởi')){
+      meta.insertAdjacentHTML('beforeend',`<span>• ✅ Chốt bởi ${esc(label)}${s.closedAt?' • '+fmtDate(s.closedAt):''}</span>`)
+    }
+  }
+};
+
+const _v610RenderWorkScope=renderWorkScope;
+renderWorkScope=function(){
+  const r=_v610RenderWorkScope();
+  const s=currentSession(),hint=document.getElementById('scopeHint');
+  if(s&&hint){
+    const sc=getWorkScope(s),total=sessionItems(s).length,filtered=scopedItems(s).length;
+    const scopeText=!sc.category&&!sc.group
+      ? '<b>Tất cả kho</b> (không cần chọn Ngành/Nhóm)'
+      : `<b>${sc.category?esc(sc.category):'Tất cả ngành'}</b>${sc.group?' → <b>'+esc(sc.group)+'</b>':''}`;
+    hint.innerHTML=`Phiên: <b>${esc(s.name)}</b> • Kho: <b>${esc(warehouseName(s.warehouseId))}</b> • Phạm vi trên máy này: ${scopeText} • ${filtered.toLocaleString('vi-VN')}/${total.toLocaleString('vi-VN')} mã`;
+  }
+  return r
+};
+/* ===== END v6.10 ===== */
+
 /* ===== END v6.9 ===== */
 
 /* ===== END v6.7 ===== */
