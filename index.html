@@ -1998,3 +1998,74 @@ async function requestManualQty(key,val,source='manual-total'){
   }
   await setCount(key,v,source);
   const q=getCount(s,item.itemKey||makeItemKey(item.warehouseId,item.code))??v;
+  showRealtimeCountResult(item,q,source)
+}
+qtyControl=function(item,s){
+  const key=item.itemKey||makeItemKey(item.warehouseId,item.code),v=getCount(s,key),shown=v===null?'':v;
+  return `<div class="qty-stack"><div class="qtybox"><button onclick="addCountAndShow('${esc(key)}',-1,'manual-step')">−</button><input inputmode="numeric" value="${shown}" placeholder="—" onfocus="this.select()" onchange="requestManualQty('${esc(key)}',this.value,'manual-total')"><button onclick="addCountAndShow('${esc(key)}',1,'manual-step')">＋</button></div><button class="btn outline quick-btn" title="Nhập nhanh số lượng" onclick="openQuickQty('${esc(key)}')">🔢</button></div>`
+};
+
+function openQuickQty(key){
+  const s=currentSession(),item=resolveItemArg(key,s);if(!s||!item)return;
+  if(s.status!=='active'){toast(s.status==='paused'?'Phiên đang tạm dừng.':'Phiên chưa sẵn sàng.','err');return}
+  quickQtyKey=item.itemKey||makeItemKey(item.warehouseId,item.code);quickQtyItem=item;
+  const cur=getCount(s,quickQtyKey)??0,sys=itemSysQty(item);
+  document.getElementById('quickQtyCode').textContent=item.code;
+  document.getElementById('quickQtyName').textContent=item.name;
+  document.getElementById('quickQtyMeta').textContent=(item.category||'')+' • '+(item.group||'')+' • '+(item.warehouseName||warehouseName(item.warehouseId));
+  document.getElementById('quickQtySystem').textContent=nfmt(sys);
+  document.getElementById('quickQtyCurrent').textContent=nfmt(cur);
+  const input=document.getElementById('quickQtyInput');input.value=cur||'';updateQuickQtyPreview();
+  input.oninput=updateQuickQtyPreview;openModal('quickQtyModal');setTimeout(()=>{input.focus();input.select()},120)
+}
+function updateQuickQtyPreview(){
+  const box=document.getElementById('quickQtyPreview'),input=document.getElementById('quickQtyInput');if(!box||!quickQtyItem)return;
+  const v=input.value===''?0:Number(input.value);box.outerHTML=countStateHtml(quickQtyItem,Number.isFinite(v)?v:0).replace('class="count-result-card','id="quickQtyPreview" class="count-result-card')
+}
+async function confirmQuickQty(){
+  const input=document.getElementById('quickQtyInput'),item=quickQtyItem,key=quickQtyKey;if(!item||!key)return;
+  const v=Number(input.value);if(!Number.isFinite(v)||v<0){toast('Nhập số lượng hợp lệ','err');return}
+  closeModal('quickQtyModal');await requestManualQty(key,v,'manual-quick');quickQtyItem=null;quickQtyKey=''
+}
+
+processScan=async function(raw){
+  if(pendingOutScopeItem)return;
+  const s=currentSession();if(!s||s.status!=='active'){toast(s?.status==='paused'?'Phiên đang tạm dừng.':'Phiên chưa sẵn sàng để kiểm.','err');return}
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return;
+  const t=Date.now(),clean=String(raw||'').trim();if(!clean)return;if(clean===lastScanValue&&t-lastScanAt<700)return;lastScanValue=clean;lastScanAt=t;
+  const code=normalizeScan(clean),box=document.getElementById('lastScan');
+  if(!code){box.className='last-scan bad';box.innerHTML='<b>⚠ Không map được mã</b><div class="small">'+esc(clean)+'</div>';beep(false);toast('Không tìm thấy mã trong data','err');return}
+  const item=findItemByCode(code,s);
+  if(!item){
+    const other=(sessionCatalog(s)?.items||[]).filter(x=>String(x.code)===String(code));
+    box.className='last-scan bad';box.innerHTML='<b>⛔ Mã không thuộc kho đang kiểm</b><div class="small">'+esc(code)+(other.length?' • Có tại: '+esc([...new Set(other.map(x=>x.warehouseName||warehouseName(x.warehouseId)))].join(', ')):'')+'</div>';beep(false);toast('Không nhận: mã thuộc kho khác','err');return
+  }
+  if(!scopeAllows(item,s)){box.className='last-scan bad';box.innerHTML='<b>⚠ Mã ngoài Ngành/Nhóm đang chọn</b><div class="small">'+esc(item.category)+' • '+esc(item.group)+'</div>';beep(false);showOutOfScopeScan(item,code);return}
+  const key=item.itemKey||makeItemKey(item.warehouseId,item.code),q=await v67AuthoritativeAdd(key,1,'scan');if(q===null)return;
+  showRealtimeCountResult(item,q,'scan')
+};
+
+acceptOutScopeScan=async function(changeScope){
+  const item=pendingOutScopeItem,s=currentSession();if(!item||!s)return cancelOutScopeScan();
+  if(changeScope){saveWorkScope({category:item.category||'',group:item.group||''},s);populateScopeFilters()}
+  const key=item.itemKey||makeItemKey(item.warehouseId,item.code);closeModal('outScopeModal');pendingOutScopeItem=null;pendingOutScopeCode='';
+  const q=await v67AuthoritativeAdd(key,1,'scan-outscope');if(q===null)return;
+  renderAll();showRealtimeCountResult(item,q,'scan-outscope')
+};
+
+const _v67RenderProductSearch=renderProductSearch;
+renderProductSearch=function(){_v67RenderProductSearch()};
+const _v67RenderRecent=renderRecent;
+renderRecent=function(){_v67RenderRecent()};
+/* ===== END v6.7 ===== */
+
+/* ===== END v6.6 ===== */
+
+/* ===== END v6.5 ===== */
+
+/* ===== END v6 ===== */
+
+</script>
+
+</body>
+</html>
