@@ -997,8 +997,7 @@ deleteSession=async function(id){const existed=!!state.sessions[id];await _local
 function isTopZoneWarehouse(wh){return !!wh&&(wh.id==='tz'||/top\s*zone|\btz\b/i.test(String(wh.name||'')))}
 function isTgddWarehouse(wh){return !!wh&&(wh.id==='tgdd'||/tgd|the gioi di dong|thế giới di động/i.test(String(wh.name||'')))}
 function isPhoneItemDraft(x){const t=slug((x.category||'')+' '+(x.group||''));return t.includes('dien thoai')||t.includes('smartphone')||t.includes('mobile phone')}
-function isApplePhoneDraft(x){const t=slug((x.manufacturer||'')+' '+(x.name||''));return t.includes('apple')||t.includes('iphone')}
-function warehouseFilenameMismatch(fileName,warehouseId){const f=slug(fileName||'');if(warehouseId==='tz'&&(f.includes('tgdd')||f.includes('the gioi di dong')))return 'Tên file có dấu hiệu là file TGDĐ nhưng đang nhập vào cổng TZ.';if(warehouseId==='tgdd'&&(f.includes('topzone')||/(^| )tz( |$)/.test(f)))return 'Tên file có dấu hiệu là file TopZone/TZ nhưng đang nhập vào cổng TGDĐ.';return ''}
+function isApplePhoneDraft(x){const t=slug((x.manufacturer||'')+' '+(x.name||''));return t.includes('apple')||t.includes('iphone')}function warehouseFilenameMismatch(fileName,warehouseId){const f=slug(fileName||'');if(warehouseId==='tz'&&(f.includes('tgdd')||f.includes('the gioi di dong')))return 'Tên file có dấu hiệu là file TGDĐ nhưng đang nhập vào cổng TZ.';if(warehouseId==='tgdd'&&(f.includes('topzone')||/(^| )tz( |$)/.test(f)))return 'Tên file có dấu hiệu là file TopZone/TZ nhưng đang nhập vào cổng TGDĐ.';return ''}
 function setImportStatus(id,html,kind=''){const el=document.getElementById('importStatus_'+id);if(el){el.innerHTML=html;el.style.color=kind==='err'?'#b91c1c':kind==='ok'?'#047857':'#667085'}}
 function renderImportValidation(title,lines=[],kind='warn'){
   const el=document.getElementById('importValidation');if(!el)return;const bg=kind==='err'?'#fff1f2':kind==='ok'?'#ecfdf3':'#fffbeb',bd=kind==='err'?'#fecdd3':kind==='ok'?'#a7f3d0':'#fde68a';
@@ -1997,8 +1996,7 @@ function suspiciousManualQty(item,val){
   const sys=Math.max(0,Number(itemSysQty(item)||0)),v=Math.max(0,Number(val)||0),diff=Math.abs(v-sys);
   if(sys===0)return v>=10;
   return diff>=Math.max(5,Math.ceil(sys*.75));
-}
-async function requestManualQty(key,val,source='manual-total'){
+}async function requestManualQty(key,val,source='manual-total'){
   const s=currentSession(),item=resolveItemArg(key,s);if(!s||!item)return;
   let v=Number(val);if(!Number.isFinite(v)||v<0){toast('Số lượng không hợp lệ','err');return}
   v=Math.round(v*10000)/10000;
