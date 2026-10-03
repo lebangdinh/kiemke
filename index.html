@@ -86,12 +86,43 @@
       .container{padding:0;max-width:none}.tab{display:none!important}#tab-print{display:block!important}.card{border:0;box-shadow:none;padding:0}.a4page{display:block!important;width:297mm;height:210mm;min-height:210mm;margin:0;box-shadow:none;page-break-after:always;break-after:page;overflow:hidden}.a4page:last-child{page-break-after:auto}
       #printArea{margin:0}
     }
+  
+    /* v6.5 mobile/session flow */
+    .scope-warehouse-display{min-height:46px;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #d7dde7;border-radius:12px;background:#f8fafc;font-weight:900}
+    .session-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .session-actions .btn{min-height:42px}
+    .mobile-session-bar{display:none}
+    .status-paused{background:#fef3c7;color:#92400e}
+    .scope-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px;margin-top:12px}
+    .scope-grid .warehouse-field{min-width:0}
+    .camera-tip{font-size:11px;color:#667085}
+    @media(max-width:700px){
+      body{padding-bottom:82px}
+      .container{padding:10px 9px 92px}
+      .topbar{padding:8px 9px}.topinner{gap:8px}.brand{font-size:15px}.brand small{font-size:9.5px}.cloudbtn{font-size:12px;max-width:46vw}
+      .identity-inner{padding:5px 9px;gap:5px}.identity-pill{font-size:9.5px;padding:5px 7px}
+      .tabs{padding:3px 0 9px;gap:6px}.tabbtn{font-size:12px;padding:8px 11px}
+      .sync-banner{padding:10px 11px;margin-bottom:10px}.sync-banner .txt span{font-size:11px}.sync-banner .btn{padding:9px 11px}
+      #workScopeCard{padding:11px!important;margin-bottom:10px!important}.scope-grid{grid-template-columns:1fr 1fr;gap:8px}.scope-grid .warehouse-field{grid-column:1/-1}
+      .scope-warehouse-display{min-height:42px;padding:8px 10px;font-size:13px}.field label{font-size:11px}select,input,textarea{font-size:16px;padding:10px 10px}
+      .g4{grid-template-columns:repeat(2,1fr);gap:8px}.kpi{padding:10px}.kpi .n{font-size:22px}.kpi .t{font-size:10px}
+      .desktop-session-controls{display:none!important}
+      .scan-layout{gap:10px}.scanner,#reader{min-height:215px}.scan-placeholder{padding:24px}.scan-placeholder .ico{font-size:38px}
+      .card{padding:11px;border-radius:14px}.card h3{font-size:15px}.btn{padding:9px 11px;border-radius:11px}
+      .tablewrap{border-radius:12px}table{font-size:11px}th,td{padding:8px 6px}
+      .qtybox button{width:32px;height:32px}.qtybox input{width:56px;font-size:14px;padding:5px}
+      .mobile-session-bar{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;position:fixed;z-index:80;left:0;right:0;bottom:0;padding:8px max(8px,env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));background:rgba(255,255,255,.97);border-top:1px solid #dbe1ea;box-shadow:0 -8px 24px rgba(15,23,42,.12);backdrop-filter:blur(12px)}
+      .mobile-session-bar .btn{padding:10px 5px;font-size:11px;min-width:0;white-space:nowrap}
+      .modal{padding:0;align-items:flex-end}.modalbox{width:100%;max-width:none;border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:90vh;overflow:auto}
+      .modal-actions .btn{min-height:44px}
+    }
+
   </style>
 </head>
 <body>
   <header class="topbar">
     <div class="topinner">
-      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v6.4 Nhân viên</small></div>
+      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v6.5 Mobile</small></div>
       <div class="session-pill"><b id="topSession">Chưa có phiên</b><span id="topStatus">—</span></div>
       <div class="cloudbox no-print"><span id="cloudDot" class="cloud-dot"></span><span id="cloudStatus" class="cloudtext">Chưa kết nối</span><button id="cloudAuthBtn" class="cloudbtn" onclick="cloudAuthAction()">🔑 Đăng nhập</button></div>
     </div>
@@ -118,8 +149,8 @@
       <div id="cloudBanner" class="sync-banner off no-print"><div class="txt"><b>☁️ Đồng bộ chưa hoạt động</b><span>Đăng nhập Google để các điện thoại dùng chung data và phiên kiểm kê.</span></div><button class="btn primary" onclick="cloudSignIn()">Đăng nhập</button></div>
       <div class="card no-print" id="workScopeCard" style="margin-bottom:14px;border-color:#c7d2fe;background:linear-gradient(135deg,#eef2ff,#fff)">
         <div class="row"><div><h3 style="margin:0">🎯 Phạm vi đang kiểm</h3><div class="small muted" style="margin-top:4px">Kho được cố định theo phiên. Mỗi nhân viên có thể tự chọn ngành / nhóm hàng để chia nhau kiểm.</div></div><div class="spacer"></div><span id="scopeBadge" class="badge b-blue">Chưa chọn kho</span></div>
-        <div class="grid g3" style="margin-top:12px">
-          <div class="field"><label>Kho / Siêu thị</label><select id="scopeWarehouse" onchange="changeSessionWarehouse(this.value)"><option value="">Chưa chọn kho</option></select></div>
+        <div class="scope-grid">
+          <div class="field warehouse-field"><label>Kho / Siêu thị</label><div class="scope-warehouse-display"><span id="scopeWarehouseText">Chưa chọn kho</span><div class="spacer"></div><button class="btn outline" style="padding:7px 9px" onclick="switchWarehouseFlow()">🏬 Đổi kho</button></div></div>
           <div class="field"><label>Ngành hàng</label><select id="scopeCategory" onchange="changeWorkScope()"><option value="">Tất cả ngành hàng</option></select></div>
           <div class="field"><label>Nhóm hàng</label><select id="scopeGroup" onchange="changeWorkScope()"><option value="">Tất cả nhóm hàng</option></select></div>
         </div>
@@ -130,8 +161,11 @@
         <div class="row">
           <div style="min-width:220px;flex:1"><b>Tiến độ mã có tồn</b><div class="progress" style="margin-top:7px"><span id="progressBar"></span></div></div>
           <div id="progressText" class="small muted">0 / 0</div>
-          <button class="btn outline" onclick="openNewSession()">＋ Phiên mới</button>
-          <button class="btn ok" onclick="closeCurrentSession()">✓ Chốt phiên</button>
+          <div class="session-actions desktop-session-controls">
+            <button id="pauseSessionBtn" class="btn outline" onclick="pauseCurrentSession()">💾 Tạm dừng</button>
+            <button id="closeSessionBtn" class="btn ok" onclick="closeCurrentSession()">✅ Chốt phiên</button>
+            <button class="btn dark" onclick="switchWarehouseFlow()">🏬 Đổi kho</button>
+          </div>
         </div>
       </div>
 
@@ -145,7 +179,7 @@
           <div class="row" style="margin-top:10px">
             <button id="startScanBtn" class="btn primary" onclick="startScanner()">📷 Mở camera</button>
             <button id="stopScanBtn" class="btn danger" onclick="stopScanner()" disabled>■ Dừng</button>
-            <div class="spacer"></div><span class="tiny muted">HTTPS bắt buộc để dùng camera.</span>
+            <div class="spacer"></div><span class="camera-tip">iPhone/Android: cho phép Camera khi trình duyệt hỏi.</span>
           </div>
           <div class="field" style="margin-top:12px">
             <label>Nhập / bắn bằng máy quét rời</label>
@@ -185,7 +219,7 @@
 
     <section id="tab-sessions" class="tab">
       <div class="card">
-        <div class="row"><div><h3 style="margin:0">Các phiên kiểm kê</h3><div class="small muted" style="margin-top:4px">Lưu tự động trên thiết bị này.</div></div><div class="spacer"></div><button class="btn primary" onclick="openNewSession()">＋ Tạo phiên mới</button></div>
+        <div class="row"><div><h3 style="margin:0">Các phiên kiểm kê</h3><div class="small muted" style="margin-top:4px">Đồng bộ tự động. Phiên tạm dừng có thể tiếp tục bất kỳ lúc nào.</div></div><div class="spacer"></div><button class="btn primary" onclick="openNewSession()">＋ Tạo phiên mới</button></div>
         <div id="sessionList" style="margin-top:14px"></div>
       </div>
     </section>
@@ -285,6 +319,12 @@
     </section>
   </main>
 
+  <div class="mobile-session-bar no-print">
+    <button id="mobilePauseBtn" class="btn outline" onclick="pauseCurrentSession()">💾 Tạm dừng</button>
+    <button id="mobileCloseBtn" class="btn ok" onclick="closeCurrentSession()">✅ Chốt</button>
+    <button class="btn dark" onclick="switchWarehouseFlow()">🏬 Đổi kho</button>
+  </div>
+
   <div id="toast" class="toast"></div>
 
   <div id="newSessionModal" class="modal">
@@ -318,6 +358,16 @@
           <button id="profileSaveBtn" class="btn primary" onclick="saveCloudProfile()">Lưu hồ sơ</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div id="warehouseSwitchModal" class="modal">
+    <div class="modalbox">
+      <h3>🏬 Đổi kho kiểm kê</h3>
+      <div class="small muted" style="margin-bottom:12px">Phiên đang kiểm sẽ được tạm dừng trước khi chuyển kho. Mỗi kho có phiên riêng nên số liệu không bị trộn.</div>
+      <div class="field"><label>Kho muốn chuyển sang</label><select id="switchWarehouseSelect" onchange="updateWarehouseSwitchInfo()"></select></div>
+      <div id="switchWarehouseInfo" class="profile-lock small muted" style="margin-top:10px"></div>
+      <div class="modal-actions"><button class="btn" onclick="closeModal('warehouseSwitchModal')">Hủy</button><button id="switchWarehouseOk" class="btn primary" onclick="confirmSwitchWarehouse()">Chuyển kho</button></div>
     </div>
   </div>
 
@@ -888,10 +938,10 @@ function getWarehouses(){
   for(const it of (c?.items||[])){
     const id=it.warehouseId||LEGACY_WH;if(!map.has(id))map.set(id,{id,name:it.warehouseName||id})
   }
-  if([...map.keys()].includes(LEGACY_WH)&&!map.get(LEGACY_WH)?.name)map.set(LEGACY_WH,{id:LEGACY_WH,name:'Dữ liệu cũ - chưa tách kho'});
+  if([...map.keys()].includes(LEGACY_WH)&&!map.get(LEGACY_WH)?.name)map.set(LEGACY_WH,{id:LEGACY_WH,name:''});
   return [...map.values()];
 }
-function warehouseName(id){return getWarehouses().find(w=>w.id===id)?.name||(id===LEGACY_WH?'Dữ liệu cũ - chưa tách kho':id||'—')}
+function warehouseName(id){return getWarehouses().find(w=>w.id===id)?.name||(id===LEGACY_WH?'':id||'—')}
 function addWarehouse(){
   if(!isManager()){toast('Cần mở khóa Quản Lý','err');return}
   const inp=document.getElementById('newWarehouseName');const name=inp?.value.trim();if(!name)return;
@@ -1403,6 +1453,107 @@ const _v6RenderAll=renderAll;
 renderAll=function(){_v6RenderAll();renderIdentityStrip();if(isManager())renderManagerEmployees()};
 
 setTimeout(()=>{renderIdentityStrip();if(cloudUser&&!profileComplete(cloudProfile))openProfile(true)},180);
+
+/* ===== v6.5 MOBILE + SESSION FLOW + LEGACY CLEANUP ===== */
+function validWarehouses(){return getWarehouses().filter(w=>w&&w.id&&w.id!==LEGACY_WH&&w.name)}
+function hasSessionData(s){return !!(s&&(Object.keys(s.counts||{}).length||(s.events||[]).length))}
+function migrateAwayLegacy(){
+  const valid=validWarehouses();const fallback=valid[0]?.id||'tgdd';
+  state.warehouses=(state.warehouses||[]).filter(w=>w.id&&w.id!==LEGACY_WH&&w.name);
+  for(const cat of Object.values(state.catalogs||{})){if(cat?.items)cat.items=cat.items.filter(it=>it.warehouseId&&it.warehouseId!==LEGACY_WH)}
+  for(const [id,s] of Object.entries(state.sessions||{})){
+    if(!s.warehouseId||s.warehouseId===LEGACY_WH){
+      if(hasSessionData(s)){delete state.sessions[id];continue}
+      s.warehouseId=fallback;s.warehouseName=warehouseName(fallback);s.updatedAt=nowIso();
+    }
+  }
+  let active=activeCatalog();
+  if(!active?.items?.some(it=>it.warehouseId&&it.warehouseId!==LEGACY_WH)){
+    const candidates=Object.values(state.catalogs||{}).filter(c=>c?.items?.some(it=>it.warehouseId&&it.warehouseId!==LEGACY_WH)).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+    if(candidates[0])state.activeCatalogVersion=candidates[0].version;
+  }
+  if(!state.sessions[state.activeSessionId]){
+    const arr=Object.values(state.sessions||{}).sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)));
+    state.activeSessionId=arr[0]?.id||null;currentSessionId=state.activeSessionId;
+  }
+  saveState();
+}
+
+const _v65GetWarehouses=getWarehouses;
+getWarehouses=function(){return _v65GetWarehouses().filter(w=>w.id!==LEGACY_WH&&w.name)};
+const _v65WarehouseName=warehouseName;
+warehouseName=function(id){if(!id||id===LEGACY_WH)return '';return _v65WarehouseName(id)};
+
+function sessionStatusText(s){if(!s)return 'Chưa có phiên';if(s.status==='closed')return 'Đã chốt';if(s.status==='paused')return 'Tạm dừng';return 'Đang kiểm'}
+const _v65RenderTop=renderTop;
+renderTop=function(){
+  _v65RenderTop();const s=currentSession();const e=document.getElementById('topStatus');if(e&&s)e.textContent=sessionStatusText(s)+' • '+fmtDate(s.updatedAt)
+};
+const _v65RenderWorkScope=renderWorkScope;
+renderWorkScope=function(){
+  _v65RenderWorkScope();const s=currentSession();const txt=document.getElementById('scopeWarehouseText');if(txt)txt.textContent=s?.warehouseId?warehouseName(s.warehouseId):'Chưa chọn kho';
+  const badge=document.getElementById('scopeBadge');if(badge){badge.textContent=s?.warehouseId?warehouseName(s.warehouseId):'Chưa chọn kho';badge.className='badge '+(s?.status==='paused'?'status-paused':'b-blue')}
+};
+
+async function pauseCurrentSession(silent=false){
+  const s=currentSession();if(!s){toast('Chưa có phiên kiểm kê','err');return false}
+  if(s.status==='closed'){toast('Phiên đã chốt.','err');return false}
+  if(s.status==='paused'){if(!silent)toast('Phiên đang tạm dừng');return true}
+  try{if(scannerRunning)await stopScanner()}catch{}
+  s.status='paused';s.pausedAt=nowIso();s.updatedAt=nowIso();saveState();
+  if(cloudUser&&cloudPermitted)await cloudWriteSessionMeta(s);renderAll();if(!silent)toast('💾 Đã tạm dừng phiên','ok');return true
+}
+async function resumeSession(id){
+  const s=state.sessions[id];if(!s)return;if(s.status==='closed'){toast('Phiên đã chốt. Quản Lý cần mở lại nếu muốn sửa.','err');return}
+  s.status='active';s.pausedAt=null;s.updatedAt=nowIso();currentSessionId=id;state.activeSessionId=id;saveState();
+  if(cloudUser&&cloudPermitted)await cloudWriteSessionMeta(s);if(typeof attachCloudActiveSession==='function')attachCloudActiveSession();renderAll();switchTab('count');toast('▶ Đã tiếp tục phiên '+warehouseName(s.warehouseId),'ok')
+}
+
+function latestPausedForWarehouse(id){return Object.values(state.sessions||{}).filter(s=>s.warehouseId===id&&s.status==='paused').sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)))[0]||null}
+async function switchWarehouseFlow(){
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return;
+  const s=currentSession();
+  if(s?.status==='active'){
+    const ok=await askConfirm('Tạm dừng và đổi kho',`Phiên <b>${esc(s.name)}</b> sẽ được tạm dừng để chuyển sang kho khác. Dữ liệu đã kiểm vẫn được giữ và đồng bộ.<br><br>Tiếp tục?`,'Tạm dừng & đổi kho');
+    if(!ok)return;await pauseCurrentSession(true)
+  }
+  const ws=validWarehouses();if(!ws.length){toast('Chưa có dữ liệu kho. Quản Lý cần nhập file tồn tổng hợp.','err');return}
+  const sel=document.getElementById('switchWarehouseSelect');const currentId=s?.warehouseId||'';
+  sel.innerHTML=ws.map(w=>`<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('');
+  const other=ws.find(w=>w.id!==currentId)||ws[0];sel.value=other.id;updateWarehouseSwitchInfo();openModal('warehouseSwitchModal')
+}
+function updateWarehouseSwitchInfo(){
+  const id=document.getElementById('switchWarehouseSelect')?.value||'',box=document.getElementById('switchWarehouseInfo'),btn=document.getElementById('switchWarehouseOk');const p=latestPausedForWarehouse(id);
+  if(p){box.innerHTML=`Có phiên tạm dừng gần nhất: <b>${esc(p.name)}</b><br>${fmtDate(p.updatedAt)}. Chuyển kho sẽ tiếp tục phiên này.`;btn.textContent='▶ Tiếp tục phiên'}
+  else{box.innerHTML=`Sẽ tạo <b>phiên kiểm kê mới</b> cho ${esc(warehouseName(id))}.`;btn.textContent='🏬 Bắt đầu kho này'}
+}
+async function confirmSwitchWarehouse(){
+  const id=document.getElementById('switchWarehouseSelect')?.value||'';if(!id)return;closeModal('warehouseSwitchModal');const p=latestPausedForWarehouse(id);if(p){await resumeSession(p.id);return}
+  const s={id:uid('ss'),name:'Kiểm kê '+warehouseName(id)+' '+new Date().toLocaleString('vi-VN',{hour12:false}),note:'',warehouseId:id,warehouseName:warehouseName(id),createdAt:nowIso(),updatedAt:nowIso(),closedAt:null,pausedAt:null,status:'active',catalogVersion:state.activeCatalogVersion,counts:{},events:[],createdBy:(typeof cloudActor==='function'?cloudActor():{})};
+  state.sessions[s.id]=s;state.activeSessionId=s.id;currentSessionId=s.id;saveState();saveWorkScope({},s);if(cloudUser&&cloudPermitted)await cloudWriteSessionMeta(s);if(typeof attachCloudActiveSession==='function')attachCloudActiveSession();renderAll();switchTab('count');toast('🏬 Đã bắt đầu '+warehouseName(id),'ok')
+}
+
+function renderSessionControls(){
+  const s=currentSession();const paused=s?.status==='paused',closed=s?.status==='closed';
+  for(const id of ['pauseSessionBtn','mobilePauseBtn']){const b=document.getElementById(id);if(b){b.disabled=!s||paused||closed;b.textContent=paused?'💾 Đã tạm dừng':'💾 Tạm dừng'}}
+  for(const id of ['closeSessionBtn','mobileCloseBtn']){const b=document.getElementById(id);if(b)b.disabled=!s||closed}
+}
+
+const _v65SetCount=setCount;setCount=function(...args){const s=currentSession();if(s?.status==='paused'){toast('Phiên đang tạm dừng. Bấm Tiếp tục phiên để kiểm tiếp.','err');return}return _v65SetCount(...args)};
+const _v65AddCount=addCount;addCount=function(...args){const s=currentSession();if(s?.status==='paused'){toast('Phiên đang tạm dừng.','err');return}return _v65AddCount(...args)};
+const _v65ProcessScan=processScan;processScan=function(...args){const s=currentSession();if(s?.status!=='active'){toast(s?.status==='paused'?'Phiên đang tạm dừng.':'Phiên chưa sẵn sàng để kiểm.','err');return}return _v65ProcessScan(...args)};
+const _v65StartScanner=startScanner;startScanner=async function(){const s=currentSession();if(!s||s.status!=='active'){toast(s?.status==='paused'?'Bấm Tiếp tục phiên trước khi mở camera.':'Tạo/mở phiên đang kiểm trước.','err');return}if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return;try{document.getElementById('scanPlaceholder').classList.add('hide');if(!html5Qr)html5Qr=new Html5Qrcode('reader');await html5Qr.start({facingMode:'environment'},{fps:10,qrbox:(w,h)=>({width:Math.min(320,w*.88),height:Math.min(150,h*.40)})},processScan,()=>{});scannerRunning=true;document.getElementById('startScanBtn').disabled=true;document.getElementById('stopScanBtn').disabled=false}catch(e){console.error(e);document.getElementById('scanPlaceholder').classList.remove('hide');toast('Không mở được camera. Trên iPhone hãy cho phép Camera cho Safari.','err')}};
+
+renderSessions=function(){
+  const el=document.getElementById('sessionList');if(!el)return;const arr=Object.values(state.sessions).filter(s=>s.warehouseId&&s.warehouseId!==LEGACY_WH).sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)));
+  el.innerHTML=arr.length?arr.map(s=>{const active=s.id===currentSessionId,people=Object.values(s.participants||{}).map(x=>(x.employeeId?x.employeeId+' - ':'')+(x.name||x.email||'')).filter(Boolean);const status=s.status==='closed'?'<span class="badge b-neutral">Đã chốt</span>':s.status==='paused'?'<span class="badge status-paused">Tạm dừng</span>':'<span class="badge b-ok">Đang kiểm</span>';return `<div class="session-card ${active?'active-s':''}"><div><div class="row"><b>${esc(s.name)}</b><span class="badge b-blue">🏬 ${esc(warehouseName(s.warehouseId))}</span>${active?'<span class="badge b-blue">Đang mở</span>':''}${status}</div><div class="session-meta"><span>${fmtDate(s.createdAt)}</span>${s.note?'<span>• '+esc(s.note)+'</span>':''}${people.length?'<span>• 👤 '+esc(people.slice(0,4).join(', '))+(people.length>4?'…':'')+'</span>':''}</div></div><div class="row">${s.status==='paused'?`<button class="btn ok" onclick="resumeSession('${s.id}')">▶ Tiếp tục</button>`:`<button class="btn outline" onclick="openSession('${s.id}')">${s.status==='closed'?'Xem':'Mở'}</button>`}<button class="btn outline" onclick="exportSessionExcel('${s.id}')">Excel</button><button class="btn outline" onclick="openSessionPrint('${s.id}')">A4/Ảnh</button>${s.status==='closed'?`<button class="btn outline" onclick="reopenSession('${s.id}')">Mở lại</button>`:''}<button class="btn danger" onclick="deleteSession('${s.id}')">Xóa</button></div></div>`}).join(''):'<div class="empty">Chưa có phiên.</div>'
+};
+
+const _v65RenderAll=renderAll;renderAll=function(){_v65RenderAll();renderSessionControls();renderWorkScope()};
+
+migrateAwayLegacy();populateWarehouseUi();renderAll();
+/* ===== END v6.5 ===== */
+
 /* ===== END v6 ===== */
 
 </script>
