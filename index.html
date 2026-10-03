@@ -165,14 +165,14 @@
 <body>
   <header class="topbar">
     <div class="topinner">
-      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v6.5 Mobile</small></div>
+      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v6.8 Realtime</small></div>
       <div class="session-pill"><b id="topSession">Chưa có phiên</b><span id="topStatus">—</span></div>
       <div class="cloudbox no-print"><span id="cloudDot" class="cloud-dot"></span><span id="cloudStatus" class="cloudtext">Chưa kết nối</span><button id="cloudAuthBtn" class="cloudbtn" onclick="cloudAuthAction()">🔑 Đăng nhập</button></div>
     </div>
   </header>
   <div id="identityStrip" class="identity-strip no-print">
     <div class="identity-inner">
-      <span id="identityOnline" class="identity-pill offline">● OFFLINE</span>
+      <span id="identityOnline" class="identity-pill offline">● ĐANG KẾT NỐI</span>
       <span id="identityWorker" class="identity-pill">👤 Chưa nhận diện nhân viên</span>
       <span id="identityWarehouse" class="identity-pill">🏬 Chưa chọn kho</span>
     </div>
@@ -916,7 +916,7 @@ async function cloudSignIn(){
 }
 async function cloudSignOut(){try{await cloudAuth?.signOut();toast('Đã đăng xuất Cloud')}catch(e){toast('Không đăng xuất được','err')}}
 function detachCloudListeners(){try{cloudIndexDetach?.();cloudCatalogDetach?.();cloudConnDetach?.();cloudSessionDetach?.()}catch{}cloudIndexDetach=cloudCatalogDetach=cloudConnDetach=cloudSessionDetach=null}
-function attachCloudConnection(){const r=cloudDb.ref('.info/connected');const fn=s=>{cloudConnected=s.val()===true;cloudSetStatus(cloudConnected?(cloudPermitted?'Đồng bộ realtime':'Đã kết nối • kiểm tra quyền'):'Mất mạng',cloudConnected?(cloudPermitted?'ok':'warn'):'err')};r.on('value',fn);cloudConnDetach=()=>r.off('value',fn)}
+function attachCloudConnection(){const r=cloudDb.ref('.info/connected');const fn=s=>{cloudConnected=s.val()===true;cloudSetStatus(cloudConnected?(cloudPermitted?'Đã đồng bộ':'Đang kiểm tra quyền'):'Chưa đồng bộ',cloudConnected?(cloudPermitted?'ok':'warn'):'err')};r.on('value',fn);cloudConnDetach=()=>r.off('value',fn)}
 async function cloudLoadProfile(){
   try{const snap=await cloudDb.ref(CLOUD_ROOT+'/profiles/'+cloudUser.uid).once('value');cloudProfile=snap.val()||null;if(!cloudProfile){cloudProfile={name:cloudUser.displayName||cloudUser.email||'Nhân viên',email:cloudUser.email||'',updatedAt:Date.now()};try{await cloudDb.ref(CLOUD_ROOT+'/profiles/'+cloudUser.uid).set(cloudProfile)}catch{}}localStorage.setItem('kiemKeC933_profileName',cloudProfile.name||'')}
   catch{cloudProfile={name:localStorage.getItem('kiemKeC933_profileName')||cloudUser.displayName||cloudUser.email||'Nhân viên',email:cloudUser.email||''}}
@@ -924,7 +924,7 @@ async function cloudLoadProfile(){
 function openProfile(){document.getElementById('profileName').value=cloudProfileName();document.getElementById('profileEmail').textContent=cloudUser?'Google: '+(cloudUser.email||''):'Chưa đăng nhập Google';openModal('profileModal')}
 async function saveCloudProfile(){const name=document.getElementById('profileName').value.trim();if(!name){toast('Nhập tên người kiểm','err');return}cloudProfile={...(cloudProfile||{}),name,email:cloudUser?.email||'',updatedAt:Date.now()};localStorage.setItem('kiemKeC933_profileName',name);if(cloudUser&&cloudDb){try{await cloudDb.ref(CLOUD_ROOT+'/profiles/'+cloudUser.uid).set(cloudProfile)}catch{}}closeModal('profileModal');renderCloudBanner();toast('Đã lưu tên người kiểm','ok')}
 function attachCloudCatalogVersion(){
-  const r=cloudDb.ref(CLOUD_ROOT+'/config/currentCatalogVersion');const fn=async snap=>{cloudPermitted=true;cloudCatalogVersion=snap.val()||'';cloudSetStatus(cloudConnected?'Đồng bộ realtime':'Đã đăng nhập','ok');if(cloudCatalogVersion)await cloudEnsureCatalog(cloudCatalogVersion);renderManager()};
+  const r=cloudDb.ref(CLOUD_ROOT+'/config/currentCatalogVersion');const fn=async snap=>{cloudPermitted=true;cloudCatalogVersion=snap.val()||'';cloudSetStatus(cloudConnected?'Đã đồng bộ':'Chưa đồng bộ',cloudConnected?'ok':'warn');if(cloudCatalogVersion)await cloudEnsureCatalog(cloudCatalogVersion);renderManager()};
   const er=e=>{console.error(e);cloudPermitted=false;cloudSetStatus('Firebase từ chối quyền','err')};r.on('value',fn,er);cloudCatalogDetach=()=>r.off('value',fn)
 }
 async function cloudEnsureCatalog(version){
@@ -1023,7 +1023,11 @@ function openSessionPrint(id){openSession(id);switchTab('print');setTimeout(buil
 function renderSessions(){const el=document.getElementById('sessionList');if(!el)return;const arr=Object.values(state.sessions).sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)));el.innerHTML=arr.length?arr.map(s=>{const active=s.id===currentSessionId;const people=Object.values(s.participants||{}).map(x=>x.name||x.email).filter(Boolean);return `<div class="session-card ${active?'active-s':''}"><div><div class="row"><b>${esc(s.name)}</b>${active?'<span class="badge b-blue">Đang mở</span>':''}${s.status==='closed'?'<span class="badge b-neutral">Đã chốt</span>':'<span class="badge b-ok">Đang kiểm</span>'}</div><div class="session-meta"><span>${fmtDate(s.createdAt)}</span>${s.note?'<span>• '+esc(s.note)+'</span>':''}${people.length?'<span>• 👤 '+esc(people.slice(0,4).join(', '))+(people.length>4?'…':'')+'</span>':''}</div></div><div class="row"><button class="btn outline" onclick="openSession('${s.id}')">Mở</button><button class="btn outline" onclick="exportSessionExcel('${s.id}')">Excel</button><button class="btn outline" onclick="openSessionPrint('${s.id}')">A4/Ảnh</button>${s.status==='closed'?`<button class="btn outline" onclick="reopenSession('${s.id}')">Mở lại</button>`:''}<button class="btn danger" onclick="deleteSession('${s.id}')">Xóa</button></div></div>`}).join(''):'<div class="empty">Chưa có phiên.</div>'}
 const _localRenderAll=renderAll;renderAll=function(){_localRenderAll();renderCloudBanner();if(document.getElementById('tab-log')?.classList.contains('active')){populateLogFilters();renderAuditLog()}};
 window.addEventListener('online',()=>{if(cloudUser)cloudRefreshEverything()});
-setTimeout(initCloud,50);
+if(document.readyState==='complete'){
+  setTimeout(()=>{initCloud().catch(()=>{})},0);
+}else{
+  window.addEventListener('load',()=>{initCloud().catch(()=>{})},{once:true});
+}
 </script>
 
 
@@ -1476,23 +1480,44 @@ function ensureWorkerReady(){
 function renderIdentityStrip(){
   const on=document.getElementById('identityOnline'),worker=document.getElementById('identityWorker'),wh=document.getElementById('identityWarehouse');
   if(!on||!worker||!wh)return;
-  const online=!!(cloudUser&&cloudConnected&&cloudPermitted);
-  on.className='identity-pill '+(online?'online':'offline');
-  on.textContent=online?'● ONLINE • ĐỒNG BỘ':'● '+(cloudUser?'CHƯA ĐỒNG BỘ':'CHƯA ĐĂNG NHẬP');
+  let label='● ĐANG KẾT NỐI',cls='offline';
+  if(!cloudUser){
+    label='● CHƯA ĐĂNG NHẬP';
+  }else if(!cloudConnected){
+    label='● CHƯA ĐỒNG BỘ';
+  }else if(!cloudPermitted){
+    label='● ĐANG KIỂM TRA QUYỀN';
+  }else{
+    label='● ONLINE • ĐÃ ĐỒNG BỘ';cls='online';
+  }
+  on.className='identity-pill '+cls;
+  on.textContent=label;
   worker.textContent=profileComplete(cloudProfile)?'👤 '+employeeLabel(cloudProfile):'👤 Chưa nhận diện nhân viên';
   const s=currentSession();wh.textContent='🏬 '+(s?warehouseName(s.warehouseId):'Chưa chọn kho');
   const btn=document.getElementById('cloudAuthBtn');
   if(btn)btn.textContent=cloudUser?(profileComplete(cloudProfile)?'👤 '+employeeLabel(cloudProfile):'👤 Khai báo NV'):'🔑 Đăng nhập';
 }
-const _v6RenderCloudBanner=renderCloudBanner;
 renderCloudBanner=function(){
-  _v6RenderCloudBanner();
-  if(cloudUser&&profileComplete(cloudProfile)){
-    const el=document.getElementById('cloudBanner');
-    if(el&&cloudPermitted)el.innerHTML='<div class="txt"><b>☁️ Đang đồng bộ realtime</b><span>'+esc(employeeLabel(cloudProfile))+' • Mọi lượt kiểm đều lưu Mã NV, người kiểm và thời gian.</span></div><button class="btn outline" onclick="openProfile()">Hồ sơ</button>';
+  const el=document.getElementById('cloudBanner');
+  if(!el){renderIdentityStrip();return}
+  if(!cloudUser){
+    el.className='sync-banner off no-print';
+    el.innerHTML='<div class="txt"><b>☁️ Chưa đăng nhập đồng bộ</b><span>Đăng nhập Google để nhiều điện thoại dùng chung phiên kiểm kê.</span></div><button class="btn primary" onclick="cloudSignIn()">Đăng nhập</button>';
+  }else if(!profileComplete(cloudProfile)){
+    el.className='sync-banner off no-print';
+    el.innerHTML='<div class="txt"><b>👤 Chưa nhận diện nhân viên</b><span>Đã đăng nhập Google. Hãy khai báo Mã NV và Họ tên trước khi kiểm kê.</span></div><button class="btn primary" onclick="openProfile(true)">Khai báo NV</button>';
+  }else if(!cloudConnected){
+    el.className='sync-banner off no-print';
+    el.innerHTML='<div class="txt"><b>☁️ Chưa đồng bộ</b><span>'+esc(employeeLabel(cloudProfile))+' • Đang chờ kết nối Firebase. Dữ liệu thao tác sẽ được giữ trên máy.</span></div><button class="btn outline" onclick="cloudRefreshEverything()">Kết nối lại</button>';
+  }else if(!cloudPermitted){
+    el.className='sync-banner err no-print';
+    el.innerHTML='<div class="txt"><b>⚠️ Đang kiểm tra quyền Cloud</b><span>'+esc(employeeLabel(cloudProfile))+' • Chưa xác nhận được quyền đọc/ghi Firebase.</span></div><button class="btn outline" onclick="cloudRefreshEverything()">Thử lại</button>';
+  }else{
+    el.className='sync-banner no-print';
+    el.innerHTML='<div class="txt"><b>☁️ ONLINE • ĐÃ ĐỒNG BỘ</b><span>'+esc(employeeLabel(cloudProfile))+' • Mọi lượt kiểm đều lưu Mã NV, người kiểm và thời gian.</span></div><button class="btn outline" onclick="openProfile()">Hồ sơ</button>';
   }
-  renderIdentityStrip()
-};
+  renderIdentityStrip();
+}
 const _v6RenderWorkScope=renderWorkScope;
 renderWorkScope=function(){const r=_v6RenderWorkScope();renderIdentityStrip();return r};
 
@@ -1973,28 +1998,3 @@ async function requestManualQty(key,val,source='manual-total'){
   }
   await setCount(key,v,source);
   const q=getCount(s,item.itemKey||makeItemKey(item.warehouseId,item.code))??v;
-  showRealtimeCountResult(item,q,source)
-}
-qtyControl=function(item,s){
-  const key=item.itemKey||makeItemKey(item.warehouseId,item.code),v=getCount(s,key),shown=v===null?'':v;
-  return `<div class="qty-stack"><div class="qtybox"><button onclick="addCountAndShow('${esc(key)}',-1,'manual-step')">−</button><input inputmode="numeric" value="${shown}" placeholder="—" onfocus="this.select()" onchange="requestManualQty('${esc(key)}',this.value,'manual-total')"><button onclick="addCountAndShow('${esc(key)}',1,'manual-step')">＋</button></div><button class="btn outline quick-btn" title="Nhập nhanh số lượng" onclick="openQuickQty('${esc(key)}')">🔢</button></div>`
-};
-
-function openQuickQty(key){
-  const s=currentSession(),item=resolveItemArg(key,s);if(!s||!item)return;
-  if(s.status!=='active'){toast(s.status==='paused'?'Phiên đang tạm dừng.':'Phiên chưa sẵn sàng.','err');return}
-  quickQtyKey=item.itemKey||makeItemKey(item.warehouseId,item.code);quickQtyItem=item;
-  const cur=getCount(s,quickQtyKey)??0,sys=itemSysQty(item);
-  document.getElementById('quickQtyCode').textContent=item.code;
-  document.getElementById('quickQtyName').textContent=item.name;
-  document.getElementById('quickQtyMeta').textContent=(item.category||'')+' • '+(item.group||'')+' • '+(item.warehouseName||warehouseName(item.warehouseId));
-  document.getElementById('quickQtySystem').textContent=nfmt(sys);
-  document.getElementById('quickQtyCurrent').textContent=nfmt(cur);
-  const input=document.getElementById('quickQtyInput');input.value=cur||'';updateQuickQtyPreview();
-  input.oninput=updateQuickQtyPreview;openModal('quickQtyModal');setTimeout(()=>{input.focus();input.select()},120)
-}
-function updateQuickQtyPreview(){
-  const box=document.getElementById('quickQtyPreview'),input=document.getElementById('quickQtyInput');if(!box||!quickQtyItem)return;
-  const v=input.value===''?0:Number(input.value);box.outerHTML=countStateHtml(quickQtyItem,Number.isFinite(v)?v:0).replace('class="count-result-card','id="quickQtyPreview" class="count-result-card')
-}
-async function confirmQuickQty(){
