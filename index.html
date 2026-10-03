@@ -117,6 +117,19 @@
       .modal-actions .btn{min-height:44px}
     }
 
+  
+    #tab-diff .toolbar{grid-template-columns:2fr 1fr 1fr 1fr auto}
+    .compare-controls{display:grid;grid-template-columns:1fr 1.4fr 1.4fr 1fr auto;gap:10px;align-items:end}
+    .result-callout{padding:9px 11px;border-radius:12px;margin-bottom:8px;border:1px solid #e2e8f0;background:#f8fafc}
+    .result-callout.warn{background:#fff7ed;border-color:#fed7aa}.result-callout.danger{background:#fff1f2;border-color:#fecdd3}.result-callout.ok{background:#ecfdf3;border-color:#a7f3d0}
+    .compare-change{font-weight:900}.compare-up{color:#047857}.compare-down{color:#b91c1c}.compare-zero{color:#64748b}
+    @media(max-width:900px){
+      .compare-controls{grid-template-columns:1fr 1fr}.compare-controls .field:nth-child(2),.compare-controls .field:nth-child(3){grid-column:1/-1}.compare-controls>button{grid-column:1/-1}
+      #tab-compare .g4{grid-template-columns:repeat(2,1fr)}
+      #tab-diff .toolbar{grid-template-columns:1fr 1fr}#tab-diff .toolbar .wide{grid-column:1/-1}
+      #tab-print .row .btn{flex:1 1 46%}
+    }
+
   </style>
 </head>
 <body>
@@ -139,6 +152,7 @@
     <nav class="tabs no-print">
       <button class="tabbtn active" data-tab="count">📷 Kiểm kê</button>
       <button class="tabbtn" data-tab="diff">⚖️ Chênh lệch</button>
+      <button class="tabbtn" data-tab="compare">📊 So sánh kỳ</button>
       <button class="tabbtn" data-tab="sessions">🗂️ Phiên kiểm kê</button>
       <button class="tabbtn" data-tab="log">🧾 Nhật ký</button>
       <button class="tabbtn" data-tab="print">🖨️ A4 / PNG</button>
@@ -203,17 +217,51 @@
 
     <section id="tab-diff" class="tab">
       <div class="grid g4" id="kpiDiff"></div>
+      <div class="grid g2" style="margin-top:14px">
+        <div class="card">
+          <div class="row"><h3 style="margin:0">📌 Đề xuất kiểm lại</h3><div class="spacer"></div><span id="resultScopeBadge" class="badge b-blue"></span></div>
+          <div id="resultInsight" class="small muted" style="margin-top:10px"></div>
+        </div>
+        <div class="card">
+          <div class="row"><h3 style="margin:0">📊 Tổng hợp theo nhóm hàng</h3><div class="spacer"></div><span id="outScopeCountBadge" class="badge b-neutral"></span></div>
+          <div id="groupSummary" class="tablewrap" style="margin-top:10px;max-height:360px"></div>
+        </div>
+      </div>
       <div class="card" style="margin-top:14px">
         <div class="toolbar">
           <input class="wide" id="diffSearch" placeholder="Tìm mã / tên…" oninput="renderDiff()">
           <select id="diffFilter" onchange="renderDiff()">
             <option value="all">Tất cả</option><option value="diff">Có chênh lệch</option><option value="short">Thiếu</option><option value="over">Dư</option><option value="equal">Khớp</option><option value="unchecked">Chưa kiểm</option>
           </select>
-          <select id="diffCategory" onchange="renderDiff()"><option value="">Tất cả ngành hàng</option></select>
+          <select id="diffCategory" onchange="populateDiffGroups();renderDiff()"><option value="">Tất cả ngành hàng</option></select>
+          <select id="diffGroup" onchange="renderDiff()"><option value="">Tất cả nhóm hàng</option></select>
           <button class="btn outline" onclick="exportDiffCsv()">⬇ CSV</button>
         </div>
         <div id="diffTable" class="tablewrap"></div>
         <div class="row" style="margin-top:10px"><span id="diffShown" class="small muted"></span><div class="spacer"></div><button class="btn" id="diffPrev" onclick="diffPage--;renderDiff()">←</button><span id="diffPageLabel" class="small"></span><button class="btn" id="diffNext" onclick="diffPage++;renderDiff()">→</button></div>
+      </div>
+    </section>
+
+    <section id="tab-compare" class="tab">
+      <div class="card">
+        <div class="row">
+          <div><h3 style="margin:0">📊 So sánh giữa các kỳ kiểm kê</h3><div class="small muted" style="margin-top:4px">So sánh tồn sổ, kết quả kiểm kê và tình trạng chênh lệch giữa hai phiên của cùng một kho.</div></div>
+          <div class="spacer"></div>
+          <button class="btn outline" onclick="exportComparisonExcel()">⬇ Excel so sánh</button>
+        </div>
+        <div class="compare-controls" style="margin-top:12px">
+          <div class="field"><label>Kho</label><select id="compareWarehouse" onchange="populateCompareSessions()"></select></div>
+          <div class="field"><label>Kỳ mới / hiện tại</label><select id="compareSessionA" onchange="loadComparison()"></select></div>
+          <div class="field"><label>Kỳ trước</label><select id="compareSessionB" onchange="loadComparison()"></select></div>
+          <div class="field"><label>Hiển thị</label><select id="compareFilter" onchange="renderComparison()"><option value="all">Tất cả thay đổi</option><option value="stock">Tồn sổ thay đổi</option><option value="count">Kết quả kiểm thay đổi</option><option value="newdiff">Phát sinh chênh lệch</option><option value="resolved">Đã hết chênh lệch</option><option value="persistent">Chênh lệch lặp lại</option></select></div>
+          <button class="btn primary" onclick="loadComparison()">↻ So sánh</button>
+        </div>
+        <div id="compareStatus" class="small muted" style="margin-top:10px"></div>
+      </div>
+      <div class="grid g4" id="compareKpi" style="margin-top:14px"></div>
+      <div class="card" style="margin-top:14px">
+        <div class="row"><h3 style="margin:0">Chi tiết thay đổi</h3><div class="spacer"></div><span id="compareShown" class="small muted"></span></div>
+        <div id="compareTable" class="tablewrap" style="margin-top:10px"></div>
       </div>
     </section>
 
@@ -253,6 +301,7 @@
         <div class="row" style="margin-top:12px">
           <button class="btn outline" onclick="exportCurrentPng()">🖼️ PNG trang hiện tại</button>
           <button class="btn outline" onclick="exportAllPngZip()">🗜️ ZIP toàn bộ PNG</button>
+          <button class="btn outline" onclick="exportPrintExcel()">📊 Excel để in</button>
           <div class="spacer"></div><span id="printSummary" class="small muted"></span>
         </div>
         <div class="page-nav"><button class="btn" onclick="changePrintPage(-1)">← Trang trước</button><b id="printPageLabel">0 / 0</b><button class="btn" onclick="changePrintPage(1)">Trang sau →</button></div>
@@ -367,7 +416,26 @@
       <div class="small muted" style="margin-bottom:12px">Phiên đang kiểm sẽ được tạm dừng trước khi chuyển kho. Mỗi kho có phiên riêng nên số liệu không bị trộn.</div>
       <div class="field"><label>Kho muốn chuyển sang</label><select id="switchWarehouseSelect" onchange="updateWarehouseSwitchInfo()"></select></div>
       <div id="switchWarehouseInfo" class="profile-lock small muted" style="margin-top:10px"></div>
-      <div class="modal-actions"><button class="btn" onclick="closeModal('warehouseSwitchModal')">Hủy</button><button id="switchWarehouseOk" class="btn primary" onclick="confirmSwitchWarehouse()">Chuyển kho</button></div>
+      <div class="modal-actions" style="flex-wrap:wrap">
+        <button class="btn" onclick="closeModal('warehouseSwitchModal')">Hủy</button>
+        <button id="switchWarehouseNewBtn" class="btn outline hide" onclick="forceNewWarehouseSession()">＋ Tạo phiên mới</button>
+        <button id="switchWarehouseOk" class="btn primary" onclick="confirmSwitchWarehouse()">Chuyển kho</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="outScopeModal" class="modal">
+    <div class="modalbox">
+      <h3>⚠️ Mã ngoài nhóm đang kiểm</h3>
+      <div id="outScopeInfo" class="small muted"></div>
+      <div class="profile-lock small" style="margin-top:12px">
+        Sản phẩm luôn được ghi vào <b>Ngành/Nhóm chuẩn theo data tồn kho</b>. Phạm vi đang chọn chỉ là khu vực làm việc của nhân viên, không đổi phân loại sản phẩm.
+      </div>
+      <div class="modal-actions" style="flex-wrap:wrap">
+        <button class="btn" onclick="cancelOutScopeScan()">Bỏ qua</button>
+        <button class="btn outline" onclick="acceptOutScopeScan(false)">✓ Ghi nhận đúng nhóm</button>
+        <button class="btn primary" onclick="acceptOutScopeScan(true)">↪ Chuyển sang nhóm này & ghi nhận</button>
+      </div>
     </div>
   </div>
 
@@ -1552,6 +1620,213 @@ renderSessions=function(){
 const _v65RenderAll=renderAll;renderAll=function(){_v65RenderAll();renderSessionControls();renderWorkScope()};
 
 migrateAwayLegacy();populateWarehouseUi();renderAll();
+
+/* ===== v6.6 RESULTS + COLLAB + COMPARISON ===== */
+let pendingOutScopeItem=null, pendingOutScopeCode='', compareRowsCache=[], comparePackA=null, comparePackB=null;
+
+function sessionCreatorLabel(s){
+  const a=s?.createdBy||{};
+  return [a.employeeId,a.name].filter(Boolean).join(' - ') || a.email || 'Không rõ';
+}
+function sessionParticipantLabels(s){
+  return Object.values(s?.participants||{}).map(p=>[p.employeeId,p.name].filter(Boolean).join(' - ')||p.email||'').filter(Boolean);
+}
+function sessionProgressText(s){
+  try{const st=statsFor(s);return `${st.counted.toLocaleString('vi-VN')}/${st.expected.toLocaleString('vi-VN')} mã có tồn • ${st.short+st.over} mã chênh lệch`}catch{return ''}
+}
+function createWarehouseSession(id){
+  const s={id:uid('ss'),name:'Kiểm kê '+warehouseName(id)+' '+new Date().toLocaleString('vi-VN',{hour12:false}),note:'',warehouseId:id,warehouseName:warehouseName(id),createdAt:nowIso(),updatedAt:nowIso(),closedAt:null,pausedAt:null,status:'active',catalogVersion:state.activeCatalogVersion,counts:{},events:[],createdBy:(typeof cloudActor==='function'?cloudActor():{})};
+  state.sessions[s.id]=s;state.activeSessionId=s.id;currentSessionId=s.id;saveState();saveWorkScope({},s);
+  if(cloudUser&&cloudPermitted)void cloudWriteSessionMeta(s);
+  if(typeof attachCloudActiveSession==='function')attachCloudActiveSession();
+  renderAll();switchTab('count');toast('🏬 Đã bắt đầu '+warehouseName(id),'ok');return s
+}
+updateWarehouseSwitchInfo=function(){
+  const id=document.getElementById('switchWarehouseSelect')?.value||'',box=document.getElementById('switchWarehouseInfo'),btn=document.getElementById('switchWarehouseOk'),newBtn=document.getElementById('switchWarehouseNewBtn');
+  const p=latestPausedForWarehouse(id);
+  if(p){
+    const people=sessionParticipantLabels(p),creator=sessionCreatorLabel(p);
+    box.innerHTML=`<b>Có phiên chung đang tạm dừng:</b> ${esc(p.name)}<br>👤 Người tạo: <b>${esc(creator)}</b>${people.length?`<br>👥 Đã tham gia: ${esc(people.join(', '))}`:''}<br>🕒 Hoạt động cuối: ${fmtDate(p.updatedAt)}<br>📊 ${esc(sessionProgressText(p))}<br><br><b>Bất kỳ nhân viên đã đăng nhập đều có thể tiếp tục.</b> Lượt kiểm mới vẫn ghi riêng theo Mã NV.`;
+    btn.textContent='▶ Tiếp tục phiên chung';newBtn?.classList.remove('hide')
+  }else{
+    box.innerHTML=`Chưa có phiên tạm dừng của <b>${esc(warehouseName(id))}</b>.<br>Sẽ tạo <b>phiên kiểm kê mới</b>.`;
+    btn.textContent='🏬 Bắt đầu kho này';newBtn?.classList.add('hide')
+  }
+};
+confirmSwitchWarehouse=async function(){
+  const id=document.getElementById('switchWarehouseSelect')?.value||'';if(!id)return;
+  const p=latestPausedForWarehouse(id);
+  if(p){
+    const me=(typeof employeeLabel==='function'&&cloudProfile)?employeeLabel(cloudProfile):'nhân viên hiện tại';
+    const creator=sessionCreatorLabel(p);
+    const ok=await askConfirm('Tiếp tục phiên kiểm kê chung',`Phiên <b>${esc(p.name)}</b> do <b>${esc(creator)}</b> tạo đang tạm dừng.<br><br><b>${esc(me)}</b> sẽ tiếp tục trên cùng số liệu. Mọi lượt bắn tiếp theo được ghi riêng theo người kiểm.<br><br>Tiếp tục?`,'Tiếp tục phiên');
+    if(!ok)return;closeModal('warehouseSwitchModal');await resumeSession(p.id);return
+  }
+  closeModal('warehouseSwitchModal');createWarehouseSession(id)
+};
+function forceNewWarehouseSession(){
+  const id=document.getElementById('switchWarehouseSelect')?.value||'';if(!id)return;
+  closeModal('warehouseSwitchModal');createWarehouseSession(id)
+}
+
+function showOutOfScopeScan(item,code){
+  pendingOutScopeItem=item;pendingOutScopeCode=code;
+  const sc=getWorkScope(currentSession());
+  document.getElementById('outScopeInfo').innerHTML=`Mã <span class="code">${esc(code)}</span> • <b>${esc(item.name)}</b><br><br>Đang chọn: <b>${esc(sc.category||'Tất cả ngành')}</b>${sc.group?' → <b>'+esc(sc.group)+'</b>':''}<br>Nhóm đúng của sản phẩm: <b>${esc(item.category||'—')}</b> → <b>${esc(item.group||'—')}</b>`;
+  openModal('outScopeModal')
+}
+function cancelOutScopeScan(){pendingOutScopeItem=null;pendingOutScopeCode='';closeModal('outScopeModal');toast('Đã bỏ qua mã ngoài phạm vi')}
+function acceptOutScopeScan(changeScope){
+  const item=pendingOutScopeItem,s=currentSession();if(!item||!s)return cancelOutScopeScan();
+  if(changeScope){saveWorkScope({category:item.category||'',group:item.group||''},s);populateScopeFilters()}
+  const key=item.itemKey||makeItemKey(item.warehouseId,item.code);addCount(key,1,'scan-outscope');
+  const q=getCount(s,key);closeModal('outScopeModal');pendingOutScopeItem=null;pendingOutScopeCode='';
+  document.getElementById('lastScan').className='last-scan good';
+  document.getElementById('lastScan').innerHTML='<b>✓ '+esc(item.name)+'</b><div class="small"><span class="code">'+esc(item.code)+'</span> • Ghi nhận ngoài phạm vi • Đã kiểm: <b>'+nfmt(q)+'</b></div>';
+  renderAll();beep(true);toast(changeScope?'✓ Đã chuyển phạm vi và ghi nhận':'✓ Đã ghi nhận vào đúng nhóm','ok')
+}
+processScan=function(raw){
+  if(pendingOutScopeItem)return;
+  const s=currentSession();if(!s||s.status!=='active'){toast(s?.status==='paused'?'Phiên đang tạm dừng.':'Phiên chưa sẵn sàng để kiểm.','err');return}
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return;
+  const t=Date.now(),clean=String(raw||'').trim();if(!clean)return;if(clean===lastScanValue&&t-lastScanAt<850)return;lastScanValue=clean;lastScanAt=t;
+  const code=normalizeScan(clean),box=document.getElementById('lastScan');
+  if(!code){box.className='last-scan bad';box.innerHTML='<b>⚠ Không map được mã</b><div class="small">'+esc(clean)+'</div>';beep(false);toast('Không tìm thấy mã trong data','err');return}
+  const item=findItemByCode(code,s);
+  if(!item){
+    const other=(sessionCatalog(s)?.items||[]).filter(x=>String(x.code)===String(code));
+    box.className='last-scan bad';box.innerHTML='<b>⛔ Mã không thuộc kho đang kiểm</b><div class="small">'+esc(code)+(other.length?' • Có tại: '+esc([...new Set(other.map(x=>x.warehouseName||warehouseName(x.warehouseId)))].join(', ')):'')+'</div>';beep(false);toast('Không nhận: mã thuộc kho khác','err');return
+  }
+  if(!scopeAllows(item,s)){box.className='last-scan bad';box.innerHTML='<b>⚠ Mã ngoài Ngành/Nhóm đang chọn</b><div class="small">'+esc(item.category)+' • '+esc(item.group)+'</div>';beep(false);showOutOfScopeScan(item,code);return}
+  const key=item.itemKey||makeItemKey(item.warehouseId,item.code);addCount(key,1,'scan');const q=getCount(s,key);
+  box.className='last-scan good';box.innerHTML='<b>✓ '+esc(item.name)+'</b><div class="small"><span class="code">'+esc(code)+'</span> • '+esc(item.group||item.category)+' • Đã kiểm: <b>'+nfmt(q)+'</b></div>';beep(true);toast('✓ '+item.name+' → '+nfmt(q),'ok')
+};
+
+function populateDiffGroups(){
+  const cat=document.getElementById('diffCategory')?.value||'',items=sessionItems(currentSession()).filter(x=>!cat||x.category===cat),groups=[...new Set(items.map(x=>x.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'vi')),el=document.getElementById('diffGroup');if(!el)return;const old=el.value;el.innerHTML='<option value="">Tất cả nhóm hàng</option>'+groups.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');el.value=groups.includes(old)?old:''
+}
+const _v66PopulateFilters=populateFilters;
+populateFilters=function(){_v66PopulateFilters();populateDiffGroups()};
+const _v66GetDiffRows=getDiffRows;
+getDiffRows=function(){const rows=_v66GetDiffRows(),g=document.getElementById('diffGroup')?.value||'';return g?rows.filter(r=>r.item.group===g):rows};
+
+function allSessionResultRows(s=currentSession()){
+  return sessionItems(s).map(item=>{const key=item.itemKey||makeItemKey(item.warehouseId,item.code),v=getCount(s,key,s.status==='closed'),d=v===null?null:v-itemSysQty(item);return{item,key,v,d}})
+}
+function sessionOutScopeEvents(s=currentSession()){
+  if(!s)return[];const local=(s.events||[]).filter(e=>String(e.source||'').includes('outscope'));
+  const cloud=(s.id===currentSessionId?cloudEvents:[]).filter(e=>String(e.source||'').includes('outscope'));return [...local,...cloud]
+}
+function renderResultInsights(){
+  const s=currentSession();if(!s)return;
+  const rows=allSessionResultRows(s),unchecked=rows.filter(r=>r.v===null),diffs=rows.filter(r=>r.d!==null&&Math.abs(r.d)>1e-9).sort((a,b)=>Math.abs(b.d)-Math.abs(a.d));
+  const outscope=sessionOutScopeEvents(s);const insight=document.getElementById('resultInsight'),groupBox=document.getElementById('groupSummary'),badge=document.getElementById('outScopeCountBadge'),scopeBadge=document.getElementById('resultScopeBadge');
+  if(scopeBadge)scopeBadge.textContent=warehouseName(s.warehouseId);
+  if(badge){badge.textContent=`Ngoài nhóm: ${outscope.length}`;badge.className='badge '+(outscope.length?'b-warn':'b-neutral')}
+  const bits=[];
+  if(unchecked.length)bits.push(`<div class="result-callout warn"><b>⏳ Còn ${unchecked.length.toLocaleString('vi-VN')} mã chưa kiểm.</b> Nên hoàn tất hoặc xác nhận khu vực chưa kiểm trước khi chốt phiên.</div>`);
+  if(diffs.length)bits.push(`<div class="result-callout danger"><b>🔎 Có ${diffs.length.toLocaleString('vi-VN')} mã chênh lệch.</b><br>${diffs.slice(0,6).map(r=>`<span class="code">${esc(r.item.code)}</span> ${esc(r.item.name)}: <b>${r.d>0?'+':''}${nfmt(r.d)}</b>`).join('<br>')}</div>`);
+  if(outscope.length)bits.push(`<div class="result-callout warn"><b>↔ ${outscope.length} lượt ghi nhận ngoài nhóm đã chọn.</b> Sản phẩm vẫn nằm đúng nhóm chuẩn; nên xem Nhật ký nếu cần đối soát vị trí thực tế.</div>`);
+  if(!unchecked.length&&!diffs.length)bits.push('<div class="result-callout ok"><b>✅ Kết quả hiện tại đã khớp toàn bộ mã trong kho.</b></div>');
+  if(insight)insight.innerHTML=bits.join('');
+  const m=new Map();
+  for(const r of rows){const k=(r.item.category||'')+'|||'+(r.item.group||'');if(!m.has(k))m.set(k,{category:r.item.category||'',group:r.item.group||'',codes:0,counted:0,eq:0,short:0,over:0,sys:0,actual:0});const x=m.get(k);x.codes++;x.sys+=itemSysQty(r.item);if(r.v!==null){x.counted++;x.actual+=r.v;if(Math.abs(r.d)<1e-9)x.eq++;else if(r.d<0)x.short++;else x.over++}}
+  const gr=[...m.values()].sort((a,b)=>(b.short+b.over)-(a.short+a.over)||a.group.localeCompare(b.group,'vi'));
+  if(groupBox)groupBox.innerHTML=gr.length?`<table><thead><tr><th>Nhóm</th><th>Đã kiểm</th><th>Khớp</th><th>Thiếu</th><th>Dư</th><th>SL sổ</th><th>SL kiểm</th></tr></thead><tbody>${gr.map(x=>`<tr><td><b>${esc(x.group||'—')}</b><div class="tiny muted">${esc(x.category||'')}</div></td><td>${x.counted}/${x.codes}</td><td>${x.eq}</td><td>${x.short}</td><td>${x.over}</td><td>${nfmt(x.sys)}</td><td>${nfmt(x.actual)}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">Chưa có dữ liệu.</div>'
+}
+const _v66RenderDiff=renderDiff;
+renderDiff=function(){_v66RenderDiff();renderResultInsights()};
+
+function exportPrintExcel(){
+  if(typeof XLSX==='undefined'){toast('Không tải được thư viện Excel','err');return}
+  const s=currentSession(),mode=document.getElementById('printMode').value,rows=printRowsData();
+  const title=mode==='blank'?'PHIẾU KIỂM KÊ':'KẾT QUẢ KIỂM KÊ',meta=[warehouseName(s.warehouseId),s.name,new Date().toLocaleString('vi-VN',{hour12:false})].join(' • ');
+  const aoa=[[title], [meta], []];
+  if(mode==='blank'){
+    aoa.push(['STT','Ngành hàng','Nhóm hàng','Mã sản phẩm','Tên sản phẩm','SL hệ thống','SL kiểm thực tế','Ghi chú']);
+    rows.forEach((r,i)=>aoa.push([i+1,r.item.category,r.item.group,r.item.code,r.item.name,itemSysQty(r.item),'','']))
+  }else{
+    aoa.push(['STT','Ngành hàng','Nhóm hàng','Mã sản phẩm','Tên sản phẩm','SL hệ thống','SL kiểm kê','Chênh lệch','Trạng thái']);
+    rows.forEach((r,i)=>aoa.push([i+1,r.item.category,r.item.group,r.item.code,r.item.name,itemSysQty(r.item),r.v??'',r.d??'',r.d===null?'Chưa kiểm':Math.abs(r.d)<1e-9?'Khớp':r.d<0?'Thiếu':'Dư']))
+  }
+  const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:mode==='blank'?7:8}},{s:{r:1,c:0},e:{r:1,c:mode==='blank'?7:8}}];ws['!cols']=[{wch:6},{wch:20},{wch:25},{wch:18},{wch:48},{wch:12},{wch:14},{wch:14},{wch:14}];
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,mode==='blank'?'Phieu kiem ke':'Ket qua');
+  XLSX.writeFile(wb,(mode==='blank'?'phieu-kiem-ke-':'ket-qua-kiem-ke-')+safeName(warehouseName(s.warehouseId))+'-'+Date.now()+'.xlsx');toast('Đã tải Excel theo nội dung A4/PNG','ok')
+}
+
+async function exportSessionExcelV66(id){
+  if(typeof XLSX==='undefined'){toast('Không tải được thư viện Excel','err');return}
+  const pack=await cloudFetchSessionData(id);if(!pack)return;const {s,counts,events,cat}=pack;
+  const items=(cat?.items||[]).filter(x=>(x.warehouseId||LEGACY_WH)===(s.warehouseId||LEGACY_WH));
+  const result=items.map(item=>{const key=item.itemKey||makeItemKey(item.warehouseId,item.code),has=Object.prototype.hasOwnProperty.call(counts,key)||Object.prototype.hasOwnProperty.call(counts,item.code),raw=Object.prototype.hasOwnProperty.call(counts,key)?counts[key]:counts[item.code],v=has?Number(raw||0):(s.status==='closed'?0:null),d=v===null?null:v-itemSysQty(item);return{'Kho':item.warehouseName||warehouseName(item.warehouseId),'Ngành hàng':item.category,'Nhóm hàng':item.group,'Mã sản phẩm':item.code,'Tên sản phẩm':item.name,'Nhà sản xuất':item.manufacturer,'SL hệ thống':itemSysQty(item),'SL kiểm kê':v===null?'':v,'Chênh lệch':d===null?'':d,'Trạng thái':d===null?'Chưa kiểm':Math.abs(d)<1e-9?'Khớp':d<0?'Thiếu':'Dư'}});
+  const groupMap=new Map();for(const r of result){const k=r['Ngành hàng']+'|||'+r['Nhóm hàng'];if(!groupMap.has(k))groupMap.set(k,{'Ngành hàng':r['Ngành hàng'],'Nhóm hàng':r['Nhóm hàng'],'Số mã':0,'SL hệ thống':0,'SL kiểm kê':0,'Mã thiếu':0,'Mã dư':0,'Mã khớp':0});const g=groupMap.get(k);g['Số mã']++;g['SL hệ thống']+=Number(r['SL hệ thống']||0);g['SL kiểm kê']+=Number(r['SL kiểm kê']||0);if(r['Trạng thái']==='Thiếu')g['Mã thiếu']++;else if(r['Trạng thái']==='Dư')g['Mã dư']++;else if(r['Trạng thái']==='Khớp')g['Mã khớp']++}
+  const logs=events.map(e=>({'Thời gian':new Date(e.ts||e.at).toLocaleString('vi-VN',{hour12:false}),'Mã NV':e.employeeId||'','Nhân viên':e.name||'','Email':e.email||'','Kho':e.warehouseName||warehouseName(e.warehouseId),'Ngành hàng':e.category||'','Nhóm hàng':e.group||'','Mã sản phẩm':e.code||'','Tên sản phẩm':e.productName||'','Thao tác':e.action||'','Thay đổi':e.delta??'','SL sau':e.qtyAfter??'','Nguồn':e.source||''}));
+  const wb=XLSX.utils.book_new();for(const [data,name] of [[result,'Ket qua'],[[...groupMap.values()],'Theo nhom'],[logs,'Nhat ky']]){const ws=XLSX.utils.json_to_sheet(data);XLSX.utils.book_append_sheet(wb,ws,name)}XLSX.writeFile(wb,'kiem-ke-'+safeName(s.name)+'.xlsx');toast('Đã xuất Excel phiên kiểm kê','ok')
+}
+exportSessionExcel=exportSessionExcelV66;
+
+function compareSessionOptions(warehouseId){
+  return Object.values(state.sessions||{}).filter(s=>s.warehouseId===warehouseId&&s.warehouseId!==LEGACY_WH).sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)))
+}
+function populateCompareSelectors(){
+  const wh=document.getElementById('compareWarehouse');if(!wh)return;const ws=validWarehouses(),old=wh.value,currentWh=currentSession()?.warehouseId||'';wh.innerHTML=ws.map(w=>`<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('');wh.value=ws.some(w=>w.id===old)?old:(ws.some(w=>w.id===currentWh)?currentWh:(ws[0]?.id||''));populateCompareSessions()
+}
+function populateCompareSessions(){
+  const wh=document.getElementById('compareWarehouse')?.value||'',arr=compareSessionOptions(wh),a=document.getElementById('compareSessionA'),b=document.getElementById('compareSessionB');if(!a||!b)return;
+  const label=s=>`${s.status==='closed'?'✅':s.status==='paused'?'⏸️':'🟢'} ${s.name} • ${fmtDate(s.updatedAt||s.createdAt)}`;
+  a.innerHTML=arr.map(s=>`<option value="${esc(s.id)}">${esc(label(s))}</option>`).join('');b.innerHTML=arr.map(s=>`<option value="${esc(s.id)}">${esc(label(s))}</option>`).join('');
+  const cur=currentSession();if(cur?.warehouseId===wh&&arr.some(s=>s.id===cur.id))a.value=cur.id;else if(arr[0])a.value=arr[0].id;
+  const prev=arr.find(s=>s.id!==a.value&&s.status==='closed')||arr.find(s=>s.id!==a.value);if(prev)b.value=prev.id;
+  if(arr.length<2){document.getElementById('compareStatus').textContent='Cần ít nhất 2 phiên cùng kho để so sánh.';compareRowsCache=[];renderComparison();return}
+  loadComparison()
+}
+function packItemsForWarehouse(pack){
+  return (pack?.cat?.items||[]).filter(x=>(x.warehouseId||LEGACY_WH)===(pack?.s?.warehouseId||LEGACY_WH))
+}
+function packCount(pack,item){
+  const key=item.itemKey||makeItemKey(item.warehouseId,item.code),counts=pack?.counts||{};
+  if(Object.prototype.hasOwnProperty.call(counts,key))return Number((counts[key]&&typeof counts[key]==='object'?counts[key].qty:counts[key])||0);
+  if(Object.prototype.hasOwnProperty.call(counts,item.code))return Number((counts[item.code]&&typeof counts[item.code]==='object'?counts[item.code].qty:counts[item.code])||0);
+  return pack?.s?.status==='closed'?0:null
+}
+async function loadComparison(){
+  const ida=document.getElementById('compareSessionA')?.value||'',idb=document.getElementById('compareSessionB')?.value||'',status=document.getElementById('compareStatus');if(!ida||!idb||ida===idb){compareRowsCache=[];if(status)status.textContent='Chọn hai phiên khác nhau.';renderComparison();return}
+  if(status)status.textContent='Đang tải dữ liệu hai kỳ…';
+  const [a,b]=await Promise.all([cloudFetchSessionData(ida),cloudFetchSessionData(idb)]);if(!a||!b){if(status)status.textContent='Không tải được dữ liệu phiên.';return}
+  comparePackA=a;comparePackB=b;const ma=new Map(packItemsForWarehouse(a).map(x=>[String(x.code),x])),mb=new Map(packItemsForWarehouse(b).map(x=>[String(x.code),x])),codes=[...new Set([...ma.keys(),...mb.keys()])];
+  compareRowsCache=codes.map(code=>{const ia=ma.get(code),ib=mb.get(code),base=ia||ib,sysA=ia?itemSysQty(ia):0,sysB=ib?itemSysQty(ib):0,countA=ia?packCount(a,ia):null,countB=ib?packCount(b,ib):null,diffA=countA===null?null:countA-sysA,diffB=countB===null?null:countB-sysB,stockDelta=sysA-sysB,countDelta=(countA!==null&&countB!==null)?countA-countB:null;
+    const aBad=diffA!==null&&Math.abs(diffA)>1e-9,bBad=diffB!==null&&Math.abs(diffB)>1e-9;
+    let trend='same';if(aBad&&!bBad)trend='newdiff';else if(!aBad&&bBad)trend='resolved';else if(aBad&&bBad)trend='persistent';
+    return{code,itemA:ia,itemB:ib,item:base,sysA,sysB,countA,countB,diffA,diffB,stockDelta,countDelta,trend,newCode:!ib&&!!ia,removedCode:!!ib&&!ia}
+  }).sort((x,y)=>Math.abs(y.stockDelta)-Math.abs(x.stockDelta)||Math.abs((y.diffA||0))-Math.abs((x.diffA||0)));
+  if(status)status.innerHTML=`Kỳ mới: <b>${esc(a.s.name)}</b>${a.s.status!=='closed'?' <span class="badge b-warn">Tạm thời</span>':''} • Kỳ trước: <b>${esc(b.s.name)}</b>`;
+  renderComparison()
+}
+function filteredCompareRows(){
+  const f=document.getElementById('compareFilter')?.value||'all';return compareRowsCache.filter(r=>f==='stock'?Math.abs(r.stockDelta)>1e-9:f==='count'?r.countDelta!==null&&Math.abs(r.countDelta)>1e-9:f==='newdiff'?r.trend==='newdiff':f==='resolved'?r.trend==='resolved':f==='persistent'?r.trend==='persistent':true)
+}
+function trendBadge(t){return t==='newdiff'?'<span class="badge b-danger">Mới lệch</span>':t==='resolved'?'<span class="badge b-ok">Đã hết lệch</span>':t==='persistent'?'<span class="badge b-warn">Lệch lặp lại</span>':'<span class="badge b-neutral">Ổn định</span>'}
+function renderComparison(){
+  const rows=filteredCompareRows(),kpi=document.getElementById('compareKpi'),table=document.getElementById('compareTable'),shown=document.getElementById('compareShown');
+  const inc=compareRowsCache.filter(r=>r.stockDelta>0).length,dec=compareRowsCache.filter(r=>r.stockDelta<0).length,newDiff=compareRowsCache.filter(r=>r.trend==='newdiff').length,resolved=compareRowsCache.filter(r=>r.trend==='resolved').length,persist=compareRowsCache.filter(r=>r.trend==='persistent').length;
+  if(kpi)kpi.innerHTML=[['Tồn sổ tăng',inc,'ok'],['Tồn sổ giảm',dec,'warn'],['Mới chênh lệch',newDiff,'danger'],['Đã xử lý lệch',resolved,'ok']].map(x=>`<div class="card kpi ${x[2]}"><div class="n">${x[1]}</div><div class="t">${x[0]}</div></div>`).join('');
+  if(shown)shown.textContent=`${rows.length.toLocaleString('vi-VN')} mã • Chênh lệch lặp lại: ${persist}`;
+  if(!table)return;if(!rows.length){table.innerHTML='<div class="empty">Không có dữ liệu phù hợp.</div>';return}
+  const delta=v=>v===null?'—':`<span class="compare-change ${v>0?'compare-up':v<0?'compare-down':'compare-zero'}">${v>0?'+':''}${nfmt(v)}</span>`;
+  table.innerHTML=`<table><thead><tr><th>Mã</th><th>Sản phẩm</th><th>Ngành / Nhóm</th><th>Tồn kỳ trước</th><th>Tồn kỳ mới</th><th>Δ tồn</th><th>Kiểm kỳ trước</th><th>Kiểm kỳ mới</th><th>Δ kiểm</th><th>Lệch trước</th><th>Lệch mới</th><th>Diễn biến</th></tr></thead><tbody>${rows.slice(0,1000).map(r=>`<tr><td class="code">${esc(r.code)}</td><td>${esc(r.item?.name||'')}</td><td>${esc(r.item?.category||'')}<div class="tiny muted">${esc(r.item?.group||'')}</div></td><td>${nfmt(r.sysB)}</td><td>${nfmt(r.sysA)}</td><td>${delta(r.stockDelta)}</td><td>${r.countB===null?'—':nfmt(r.countB)}</td><td>${r.countA===null?'—':nfmt(r.countA)}</td><td>${delta(r.countDelta)}</td><td>${r.diffB===null?'—':delta(r.diffB)}</td><td>${r.diffA===null?'—':delta(r.diffA)}</td><td>${trendBadge(r.trend)}</td></tr>`).join('')}</tbody></table>`
+}
+function exportComparisonExcel(){
+  if(typeof XLSX==='undefined'){toast('Không tải được thư viện Excel','err');return}if(!compareRowsCache.length){toast('Chưa có dữ liệu so sánh','err');return}
+  const rows=filteredCompareRows().map(r=>({'Mã sản phẩm':r.code,'Tên sản phẩm':r.item?.name||'','Ngành hàng':r.item?.category||'','Nhóm hàng':r.item?.group||'','Tồn kỳ trước':r.sysB,'Tồn kỳ mới':r.sysA,'Thay đổi tồn':r.stockDelta,'Kiểm kỳ trước':r.countB??'','Kiểm kỳ mới':r.countA??'','Thay đổi kiểm':r.countDelta??'','Chênh lệch kỳ trước':r.diffB??'','Chênh lệch kỳ mới':r.diffA??'','Diễn biến':r.trend==='newdiff'?'Phát sinh chênh lệch':r.trend==='resolved'?'Đã hết chênh lệch':r.trend==='persistent'?'Chênh lệch lặp lại':'Ổn định'}));
+  const wb=XLSX.utils.book_new(),ws=XLSX.utils.json_to_sheet(rows);ws['!cols']=[{wch:18},{wch:45},{wch:20},{wch:25},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12},{wch:15},{wch:15},{wch:22}];XLSX.utils.book_append_sheet(wb,ws,'So sanh');XLSX.writeFile(wb,'so-sanh-kiem-ke-'+Date.now()+'.xlsx');toast('Đã xuất Excel so sánh','ok')
+}
+
+const _v66SwitchTab=switchTab;
+switchTab=function(name){_v66SwitchTab(name);if(name==='compare')populateCompareSelectors();if(name==='diff'){populateDiffGroups();renderResultInsights()}};
+const _v66RenderAll=renderAll;
+renderAll=function(){_v66RenderAll();if(document.getElementById('tab-diff')?.classList.contains('active'))renderResultInsights();if(document.getElementById('tab-compare')?.classList.contains('active'))populateCompareSelectors()};
+/* ===== END v6.6 ===== */
+
 /* ===== END v6.5 ===== */
 
 /* ===== END v6 ===== */
