@@ -171,6 +171,16 @@
       .last-worker{min-width:135px}
     }
 
+  
+    .unknown-toolbar{display:grid;grid-template-columns:2fr 1fr auto;gap:10px;align-items:center}
+    .unknown-code-card{font-weight:950}
+    .unknown-person b{display:block;font-size:11px}.unknown-person span{display:block;font-size:9px;color:#64748b}
+    .unknown-pending{background:#fff7ed}.unknown-verified{background:#ecfdf3}
+    @media(max-width:900px){
+      .unknown-toolbar{grid-template-columns:1fr 1fr}.unknown-toolbar .wide{grid-column:1/-1}.unknown-toolbar .btn{grid-column:1/-1}
+      #tab-unknown table{min-width:1180px}
+    }
+
   </style>
 </head>
 <body>
@@ -196,6 +206,7 @@
       <button class="tabbtn" data-tab="compare">📊 So sánh kỳ</button>
       <button class="tabbtn" data-tab="sessions">🗂️ Phiên kiểm kê</button>
       <button class="tabbtn" data-tab="log">🧾 Nhật ký</button>
+      <button class="tabbtn" data-tab="unknown">⚠️ Mã ngoài data <span id="unknownNavBadge" class="badge b-warn" style="margin-left:5px">0</span></button>
       <button class="tabbtn" data-tab="print">🖨️ A4 / PNG</button>
       <button class="tabbtn" data-tab="manager">🔐 Quản lý</button>
     </nav>
@@ -326,6 +337,33 @@
         </div>
         <div id="logSummary" class="small muted" style="margin-bottom:8px"></div>
         <div id="auditTable" class="tablewrap"></div>
+      </div>
+    </section>
+
+    <section id="tab-unknown" class="tab">
+      <div class="card">
+        <div class="row">
+          <div>
+            <h3 style="margin:0">⚠️ Mã sản phẩm ngoài data tồn</h3>
+            <div class="small muted" style="margin-top:4px">
+              Mã không có trong data tồn sẽ KHÔNG cộng vào kết quả kiểm kê, nhưng được lưu lại để nhân viên / quản lý xác minh.
+            </div>
+          </div>
+          <div class="spacer"></div>
+          <span id="unknownSummaryBadge" class="badge b-warn">0 mã</span>
+        </div>
+        <div class="unknown-toolbar" style="margin-top:12px">
+          <input id="unknownSearch" class="wide" placeholder="Tìm mã / tên bổ sung / nhân viên…" oninput="renderUnknowns()">
+          <select id="unknownStatus" onchange="renderUnknowns()">
+            <option value="">Tất cả trạng thái</option>
+            <option value="pending">Chưa xác minh</option>
+            <option value="verified">Đã xác minh</option>
+            <option value="not_inventory">Không thuộc hàng kiểm kê</option>
+            <option value="added">Đã bổ sung vào data</option>
+          </select>
+          <button class="btn outline" onclick="exportUnknownCsv()">⬇ CSV mã ngoài data</button>
+        </div>
+        <div id="unknownTable" class="tablewrap" style="margin-top:10px"></div>
       </div>
     </section>
 
@@ -461,6 +499,35 @@
         <button class="btn" onclick="closeModal('warehouseSwitchModal')">Hủy</button>
         <button id="switchWarehouseNewBtn" class="btn outline hide" onclick="forceNewWarehouseSession()">＋ Tạo phiên mới</button>
         <button id="switchWarehouseOk" class="btn primary" onclick="confirmSwitchWarehouse()">Chuyển kho</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="unknownEditModal" class="modal">
+    <div class="modalbox">
+      <div class="row">
+        <div><h3 style="margin:0">📝 Xác minh mã ngoài data</h3><div id="unknownEditCode" class="code small" style="margin-top:5px"></div></div>
+        <div class="spacer"></div>
+        <button class="btn outline" onclick="closeModal('unknownEditModal')">✕</button>
+      </div>
+      <div class="grid g2" style="margin-top:14px">
+        <div class="field"><label>Tên sản phẩm (nếu xác định được)</label><input id="unknownEditName" placeholder="VD: iPhone 16 128GB…"></div>
+        <div class="field"><label>Nhà sản xuất / Hãng</label><input id="unknownEditManufacturer" placeholder="Apple / Samsung / …"></div>
+      </div>
+      <div class="field" style="margin-top:10px">
+        <label>Trạng thái xác minh</label>
+        <select id="unknownEditStatus">
+          <option value="pending">Chưa xác minh</option>
+          <option value="verified">Đã xác minh</option>
+          <option value="not_inventory">Không thuộc hàng kiểm kê</option>
+          <option value="added">Đã bổ sung vào data</option>
+        </select>
+      </div>
+      <div class="field" style="margin-top:10px"><label>Ghi chú</label><textarea id="unknownEditNote" rows="3" placeholder="Vị trí hàng, nguyên nhân, thông tin cần xử lý…"></textarea></div>
+      <div id="unknownEditMeta" class="profile-lock small" style="margin-top:12px"></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal('unknownEditModal')">Hủy</button>
+        <button class="btn primary" onclick="saveUnknownEdit()">✓ Lưu xác minh</button>
       </div>
     </div>
   </div>
@@ -997,7 +1064,8 @@ deleteSession=async function(id){const existed=!!state.sessions[id];await _local
 function isTopZoneWarehouse(wh){return !!wh&&(wh.id==='tz'||/top\s*zone|\btz\b/i.test(String(wh.name||'')))}
 function isTgddWarehouse(wh){return !!wh&&(wh.id==='tgdd'||/tgd|the gioi di dong|thế giới di động/i.test(String(wh.name||'')))}
 function isPhoneItemDraft(x){const t=slug((x.category||'')+' '+(x.group||''));return t.includes('dien thoai')||t.includes('smartphone')||t.includes('mobile phone')}
-function isApplePhoneDraft(x){const t=slug((x.manufacturer||'')+' '+(x.name||''));return t.includes('apple')||t.includes('iphone')}function warehouseFilenameMismatch(fileName,warehouseId){const f=slug(fileName||'');if(warehouseId==='tz'&&(f.includes('tgdd')||f.includes('the gioi di dong')))return 'Tên file có dấu hiệu là file TGDĐ nhưng đang nhập vào cổng TZ.';if(warehouseId==='tgdd'&&(f.includes('topzone')||/(^| )tz( |$)/.test(f)))return 'Tên file có dấu hiệu là file TopZone/TZ nhưng đang nhập vào cổng TGDĐ.';return ''}
+function isApplePhoneDraft(x){const t=slug((x.manufacturer||'')+' '+(x.name||''));return t.includes('apple')||t.includes('iphone')}
+function warehouseFilenameMismatch(fileName,warehouseId){const f=slug(fileName||'');if(warehouseId==='tz'&&(f.includes('tgdd')||f.includes('the gioi di dong')))return 'Tên file có dấu hiệu là file TGDĐ nhưng đang nhập vào cổng TZ.';if(warehouseId==='tgdd'&&(f.includes('topzone')||/(^| )tz( |$)/.test(f)))return 'Tên file có dấu hiệu là file TopZone/TZ nhưng đang nhập vào cổng TGDĐ.';return ''}
 function setImportStatus(id,html,kind=''){const el=document.getElementById('importStatus_'+id);if(el){el.innerHTML=html;el.style.color=kind==='err'?'#b91c1c':kind==='ok'?'#047857':'#667085'}}
 function renderImportValidation(title,lines=[],kind='warn'){
   const el=document.getElementById('importValidation');if(!el)return;const bg=kind==='err'?'#fff1f2':kind==='ok'?'#ecfdf3':'#fffbeb',bd=kind==='err'?'#fecdd3':kind==='ok'?'#a7f3d0':'#fde68a';
@@ -1996,7 +2064,8 @@ function suspiciousManualQty(item,val){
   const sys=Math.max(0,Number(itemSysQty(item)||0)),v=Math.max(0,Number(val)||0),diff=Math.abs(v-sys);
   if(sys===0)return v>=10;
   return diff>=Math.max(5,Math.ceil(sys*.75));
-}async function requestManualQty(key,val,source='manual-total'){
+}
+async function requestManualQty(key,val,source='manual-total'){
   const s=currentSession(),item=resolveItemArg(key,s);if(!s||!item)return;
   let v=Number(val);if(!Number.isFinite(v)||v<0){toast('Số lượng không hợp lệ','err');return}
   v=Math.round(v*10000)/10000;
@@ -2706,6 +2775,318 @@ renderAuditLog=function(){
     `</tbody></table>`
 };
 /* ===== END v6.11 ===== */
+
+/* ===== v6.12 UNKNOWN CODES / OUTSIDE CATALOG ===== */
+const APP_VERSION_612='6.12';
+let unknownEditKey='';
+
+function applyAppVersion612(){
+  const el=document.getElementById('appVersionLabel');
+  if(el)el.textContent=`Mobile Inventory Tool • v${APP_VERSION_612} Kiểm kê`;
+  document.title=`Kiểm kê C933 • v${APP_VERSION_612}`;
+}
+applyAppVersion612();
+
+function sessionUnknowns(s=currentSession()){
+  if(!s)return {};
+  if(!s.unknowns||typeof s.unknowns!=='object'||Array.isArray(s.unknowns))s.unknowns={};
+  return s.unknowns
+}
+function unknownKey(code){
+  const s=String(code||'');
+  return 'u_'+Array.from(s).map(ch=>ch.codePointAt(0).toString(16)).join('_').slice(0,220)
+}
+function extractUnknownCode(raw){
+  raw=String(raw||'').trim();if(!raw)return '';
+  const candidates=[];
+  try{
+    const u=new URL(raw);
+    for(const k of ['code','sku','id','ma','masp','barcode','ean','upc']){
+      const v=u.searchParams.get(k);if(v)candidates.push(v)
+    }
+  }catch{}
+  const digitGroups=raw.match(/\d{5,24}/g)||[];
+  candidates.push(...digitGroups);
+  const only=raw.replace(/\D/g,'');
+  if(only.length>=5)candidates.push(only);
+  candidates.push(raw);
+  return String(candidates.find(x=>String(x||'').trim())||raw).trim().slice(0,120)
+}
+function unknownStatusLabel(v){
+  return v==='verified'?'Đã xác minh':v==='not_inventory'?'Không thuộc hàng kiểm kê':v==='added'?'Đã bổ sung data':'Chưa xác minh'
+}
+function unknownStatusBadge(v){
+  return v==='verified'?'<span class="badge b-ok">Đã xác minh</span>':
+    v==='not_inventory'?'<span class="badge b-neutral">Không kiểm kê</span>':
+    v==='added'?'<span class="badge b-blue">Đã bổ sung data</span>':
+    '<span class="badge b-warn">Chưa xác minh</span>'
+}
+function unknownActorHtml(a,at){
+  const label=actorLabel(a)||'Không rõ';
+  return `<div class="unknown-person"><b>👤 ${esc(label)}</b>${at?`<span>${new Date(at).toLocaleString('vi-VN',{hour12:false})}</span>`:''}</div>`
+}
+function makeUnknownRecord(code,raw,s){
+  const sc=getWorkScope(s),a=cloudActor(),now=Date.now();
+  return {
+    code:String(code||''),raw:String(raw||''),warehouseId:s.warehouseId||'',warehouseName:warehouseName(s.warehouseId),
+    scopeCategory:sc.category||'',scopeGroup:sc.group||'',
+    firstAt:now,lastAt:now,firstBy:a,lastBy:a,scans:1,status:'pending',
+    productName:'',manufacturer:'',note:'',verifiedAt:null,verifiedBy:null
+  }
+}
+function mergeUnknownLocal(key,rec){
+  const s=currentSession();if(!s)return;
+  const map=sessionUnknowns(s),old=map[key]||{};
+  map[key]={...old,...rec};
+  s.updatedAt=nowIso();saveState()
+}
+async function recordUnknownScan(raw){
+  const s=currentSession();if(!s||!deviceCanCount())return null;
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return null;
+  const code=extractUnknownCode(raw),key=unknownKey(code),a=cloudActor(),sc=getWorkScope(s),now=Date.now();
+  const map=sessionUnknowns(s),old=map[key];
+  let rec=old?{...old,
+    code,raw:String(raw||''),lastAt:now,lastBy:a,scans:Number(old.scans||0)+1,
+    warehouseId:s.warehouseId||'',warehouseName:warehouseName(s.warehouseId),
+    scopeCategory:sc.category||old.scopeCategory||'',scopeGroup:sc.group||old.scopeGroup||''
+  }:makeUnknownRecord(code,raw,s);
+  map[key]=rec;s.updatedAt=nowIso();saveState();renderUnknowns();renderUnknownBadge();
+
+  if(cloudDb&&cloudUser&&cloudPermitted){
+    try{
+      await cloudWriteSessionMeta(s);
+      const ref=cloudDb.ref(CLOUD_ROOT+'/sessions/'+s.id+'/unknowns/'+key);
+      const tx=await ref.transaction(cur=>{
+        if(!cur)return makeUnknownRecord(code,raw,s);
+        return {...cur,
+          code,raw:String(raw||cur.raw||''),warehouseId:s.warehouseId||cur.warehouseId||'',
+          warehouseName:warehouseName(s.warehouseId),scopeCategory:sc.category||cur.scopeCategory||'',
+          scopeGroup:sc.group||cur.scopeGroup||'',lastAt:Date.now(),lastBy:a,
+          scans:Number(cur.scans||0)+1
+        }
+      });
+      if(tx.committed&&tx.snapshot.val()){rec=tx.snapshot.val();mergeUnknownLocal(key,rec)}
+      const item={itemKey:'unknown::'+code,warehouseId:s.warehouseId,warehouseName:warehouseName(s.warehouseId),code,name:'Mã ngoài data',category:sc.category||'',group:sc.group||'',manufacturer:''};
+      await cloudRecordEvent(s,item,{source:'scan-unknown',action:'unknown',delta:1,qtyBefore:null,qtyAfter:Number(rec.scans||1)})
+    }catch(e){console.error(e);toast('Mã ngoài data đã lưu trên máy, đang chờ đồng bộ Cloud','err')}
+  }
+  renderAll();return rec
+}
+
+function filteredUnknowns(){
+  const s=currentSession(),q=slug(document.getElementById('unknownSearch')?.value||''),status=document.getElementById('unknownStatus')?.value||'';
+  return Object.entries(sessionUnknowns(s)).map(([key,v])=>({key,...v}))
+    .filter(x=>(!status||x.status===status)&&(!q||slug([x.code,x.productName,x.manufacturer,x.note,actorLabel(x.firstBy),actorLabel(x.lastBy)].join(' ')).includes(q)))
+    .sort((a,b)=>Number(b.lastAt||0)-Number(a.lastAt||0))
+}
+function renderUnknownBadge(){
+  const s=currentSession(),arr=Object.values(sessionUnknowns(s)),pending=arr.filter(x=>(x.status||'pending')==='pending').length;
+  const n=document.getElementById('unknownNavBadge'),b=document.getElementById('unknownSummaryBadge');
+  if(n){n.textContent=String(arr.length);n.className='badge '+(pending?'b-warn':'b-neutral')}
+  if(b){b.textContent=`${arr.length.toLocaleString('vi-VN')} mã • ${pending.toLocaleString('vi-VN')} chưa xác minh`;b.className='badge '+(pending?'b-warn':'b-ok')}
+}
+function renderUnknowns(){
+  renderUnknownBadge();
+  const el=document.getElementById('unknownTable');if(!el)return;
+  const arr=filteredUnknowns();
+  if(!arr.length){el.innerHTML='<div class="empty">Chưa có mã ngoài data trong phiên này.</div>';return}
+  el.innerHTML=`<table><thead><tr>
+    <th>Mã quét</th><th>Số lần</th><th>Kho</th><th>Phạm vi lúc quét</th><th>Quét lần đầu</th><th>Quét gần nhất</th>
+    <th>Thông tin bổ sung</th><th>Trạng thái</th><th>Ghi chú</th><th>Xử lý</th>
+  </tr></thead><tbody>${arr.map(x=>`<tr class="${x.status==='pending'?'unknown-pending':x.status==='verified'?'unknown-verified':''}">
+    <td><div class="unknown-code-card code">${esc(x.code||'')}</div><div class="tiny muted" title="${esc(x.raw||'')}">${esc((x.raw||'').slice(0,42))}</div></td>
+    <td><b>${Number(x.scans||0).toLocaleString('vi-VN')}</b><div class="tiny muted">không cộng tồn</div></td>
+    <td><b>${esc(x.warehouseName||warehouseName(x.warehouseId))}</b></td>
+    <td>${esc(x.scopeCategory||'Tất cả ngành')}<div class="tiny muted">${esc(x.scopeGroup||'Tất cả nhóm')}</div></td>
+    <td>${unknownActorHtml(x.firstBy,x.firstAt)}</td><td>${unknownActorHtml(x.lastBy,x.lastAt)}</td>
+    <td><b>${esc(x.productName||'—')}</b><div class="tiny muted">${esc(x.manufacturer||'')}</div></td>
+    <td>${unknownStatusBadge(x.status)}</td><td>${esc(x.note||'—')}</td>
+    <td><button class="btn outline" onclick="openUnknownEdit('${esc(x.key)}')">📝 Xác minh</button></td>
+  </tr>`).join('')}</tbody></table>`
+}
+function openUnknownEdit(key){
+  const x=sessionUnknowns()[key];if(!x)return;unknownEditKey=key;
+  document.getElementById('unknownEditCode').textContent=x.code||'';
+  document.getElementById('unknownEditName').value=x.productName||'';
+  document.getElementById('unknownEditManufacturer').value=x.manufacturer||'';
+  document.getElementById('unknownEditStatus').value=x.status||'pending';
+  document.getElementById('unknownEditNote').value=x.note||'';
+  document.getElementById('unknownEditMeta').innerHTML=
+    `Kho: <b>${esc(x.warehouseName||warehouseName(x.warehouseId))}</b><br>`+
+    `Phạm vi lúc quét: <b>${esc(x.scopeCategory||'Tất cả ngành')}</b> → <b>${esc(x.scopeGroup||'Tất cả nhóm')}</b><br>`+
+    `Số lần quét: <b>${Number(x.scans||0)}</b> • Lần cuối: <b>${esc(actorLabel(x.lastBy))}</b>`;
+  openModal('unknownEditModal')
+}
+async function saveUnknownEdit(){
+  const s=currentSession(),x=sessionUnknowns(s)[unknownEditKey];if(!s||!x)return;
+  const a=cloudActor(),patch={
+    productName:document.getElementById('unknownEditName').value.trim(),
+    manufacturer:document.getElementById('unknownEditManufacturer').value.trim(),
+    status:document.getElementById('unknownEditStatus').value||'pending',
+    note:document.getElementById('unknownEditNote').value.trim(),
+    verifiedAt:Date.now(),verifiedBy:a
+  };
+  Object.assign(x,patch);s.updatedAt=nowIso();saveState();
+  if(cloudDb&&cloudUser&&cloudPermitted){
+    try{
+      await cloudDb.ref(CLOUD_ROOT+'/sessions/'+s.id+'/unknowns/'+unknownEditKey).update(patch);
+      await cloudDb.ref(CLOUD_ROOT+'/sessionIndex/'+s.id+'/updatedAt').set(nowIso())
+    }catch(e){console.error(e);toast('Đã lưu trên máy, chưa đồng bộ được xác minh','err')}
+  }
+  closeModal('unknownEditModal');renderUnknowns();toast('✓ Đã lưu thông tin xác minh','ok')
+}
+function unknownRowsForExport(map){
+  return Object.values(map||{}).sort((a,b)=>Number(a.firstAt||0)-Number(b.firstAt||0)).map(x=>({
+    'Trạng thái':unknownStatusLabel(x.status),
+    'Mã quét':x.code||'',
+    'Chuỗi quét gốc':x.raw||'',
+    'Số lần quét':Number(x.scans||0),
+    'Kho':x.warehouseName||warehouseName(x.warehouseId),
+    'Ngành hàng đang chọn':x.scopeCategory||'Tất cả ngành',
+    'Nhóm hàng đang chọn':x.scopeGroup||'Tất cả nhóm',
+    'Tên sản phẩm bổ sung':x.productName||'',
+    'Nhà sản xuất / Hãng':x.manufacturer||'',
+    'Lần đầu quét':x.firstAt?new Date(x.firstAt).toLocaleString('vi-VN',{hour12:false}):'',
+    'Mã NV người quét đầu':x.firstBy?.employeeId||'',
+    'Người quét đầu':x.firstBy?.name||'',
+    'Email người quét đầu':x.firstBy?.email||'',
+    'Lần cuối quét':x.lastAt?new Date(x.lastAt).toLocaleString('vi-VN',{hour12:false}):'',
+    'Mã NV người quét cuối':x.lastBy?.employeeId||'',
+    'Người quét cuối':x.lastBy?.name||'',
+    'Email người quét cuối':x.lastBy?.email||'',
+    'Người xác minh':actorLabel(x.verifiedBy),
+    'Thời gian xác minh':x.verifiedAt?new Date(x.verifiedAt).toLocaleString('vi-VN',{hour12:false}):'',
+    'Ghi chú':x.note||''
+  }))
+}
+function exportUnknownCsv(){
+  const rows=unknownRowsForExport(sessionUnknowns());
+  if(!rows.length){toast('Chưa có mã ngoài data','err');return}
+  const head=Object.keys(rows[0]),csv=[head,...rows.map(r=>head.map(k=>r[k]))].map(r=>r.map(csvCell).join(',')).join('\n');
+  downloadBlob(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}),'ma-ngoai-data-'+safeName(currentSession()?.name||'phien')+'.csv')
+}
+
+/* Realtime sync of unknown codes, alongside counts and events. */
+attachCloudActiveSession=function(){
+  try{cloudSessionDetach?.()}catch{}
+  cloudSessionDetach=null;cloudEvents=[];countMetaByKey={};
+  const s=currentSession();
+  if(!cloudDb||!cloudUser||!s){renderAuditLog();renderUnknowns();return}
+  void cloudEnsureCatalog(s.catalogVersion);
+  const countsRef=cloudDb.ref(CLOUD_ROOT+'/sessions/'+s.id+'/counts');
+  const eventsRef=cloudDb.ref(CLOUD_ROOT+'/sessions/'+s.id+'/events').limitToLast(1500);
+  const unknownRef=cloudDb.ref(CLOUD_ROOT+'/sessions/'+s.id+'/unknowns');
+  const onCounts=snap=>{
+    const raw=snap.val()||{},target=currentSession();if(!target||target.id!==s.id)return;
+    target.counts={};countMetaByKey={};
+    for(const [key,v] of Object.entries(raw)){
+      if(v&&typeof v==='object'){
+        target.counts[key]=Number(v.qty||0);
+        countMetaByKey[key]={qty:Number(v.qty||0),updatedAt:Number(v.updatedAt||0),updatedBy:v.updatedBy||null}
+      }else target.counts[key]=Number(v||0)
+    }
+    target.cloudCountsLoaded=true;target.updatedAt=nowIso();saveState();renderAll()
+  };
+  const onEvents=snap=>{
+    const raw=snap.val()||{};cloudEvents=Object.entries(raw).map(([id,v])=>({id,...v})).sort((a,b)=>(b.ts||0)-(a.ts||0));
+    const target=currentSession();
+    if(target&&target.id===s.id){
+      target.events=cloudEvents.slice(0,300).map(e=>({itemKey:e.itemKey,warehouseId:e.warehouseId,code:e.code,at:e.at||new Date(e.ts||Date.now()).toISOString(),source:e.source||'cloud',qty:e.qtyAfter??e.qty??0,uid:e.uid||'',employeeId:e.employeeId||'',name:e.name||'',email:e.email||''}));
+      saveState();renderRecent()
+    }
+    populateLogFilters();renderAuditLog();
+    if(document.getElementById('tab-diff')?.classList.contains('active'))renderDiff()
+  };
+  const onUnknown=snap=>{
+    const target=currentSession();if(!target||target.id!==s.id)return;
+    target.unknowns=snap.val()||{};saveState();renderUnknowns();renderUnknownBadge()
+  };
+  countsRef.on('value',onCounts,e=>{console.error(e);cloudPermitted=false;cloudSetStatus('Không có quyền đọc phiên','err')});
+  eventsRef.on('value',onEvents);
+  unknownRef.on('value',onUnknown,e=>console.error(e));
+  cloudSessionDetach=()=>{countsRef.off('value',onCounts);eventsRef.off('value',onEvents);unknownRef.off('value',onUnknown)}
+};
+
+/* Only truly absent-from-catalog codes are logged here. Codes that exist in another warehouse keep the existing "wrong warehouse" warning. */
+const _v612ProcessScan=processScan;
+processScan=async function(raw){
+  const clean=String(raw||'').trim();if(!clean)return;
+  const s=currentSession();
+  const code=normalizeScan(clean,s);
+  if(code)return _v612ProcessScan(raw);
+
+  const t=Date.now();
+  if(clean===lastScanValue&&t-lastScanAt<700)return;
+  lastScanValue=clean;lastScanAt=t;
+  const unknownCode=extractUnknownCode(clean),box=document.getElementById('lastScan');
+  const rec=await recordUnknownScan(clean);
+  if(!rec)return;
+  box.className='last-scan bad';
+  box.innerHTML=`<b>⚠️ MÃ NGOÀI DATA • ĐÃ GHI NHẬN</b>
+    <div class="small" style="margin-top:4px"><span class="code">${esc(unknownCode)}</span> • Không cộng vào tồn kiểm kê.</div>
+    <div class="count-result-card short" style="margin-top:9px">
+      <div class="count-result-main"><span class="status-big">CẦN XÁC MINH</span></div>
+      <div class="small">Số lần mã này được quét trong phiên: <b>${Number(rec.scans||1)}</b></div>
+    </div>
+    <div class="scan-quick-actions"><button class="btn outline" onclick="switchTab('unknown')">⚠️ Xem Mã ngoài data</button></div>`;
+  beep(false);try{navigator.vibrate?.([100,50,100])}catch{}
+  toast('⚠ Mã không có trong data • đã lưu để xác minh','err')
+};
+
+/* Fetch unknowns too so exported session Excel is complete. */
+const _v612CloudFetchSessionData=cloudFetchSessionData;
+cloudFetchSessionData=async function(id){
+  const pack=await _v612CloudFetchSessionData(id);if(!pack)return null;
+  let unknowns=pack.s?.unknowns||{};
+  if(cloudDb&&cloudUser&&cloudPermitted){
+    try{unknowns=(await cloudDb.ref(CLOUD_ROOT+'/sessions/'+id+'/unknowns').once('value')).val()||unknowns}catch(e){console.error(e)}
+  }
+  return {...pack,unknowns}
+};
+
+exportSessionExcel=async function(id){
+  if(typeof XLSX==='undefined'){toast('Không tải được thư viện Excel','err');return}
+  const pack=await cloudFetchSessionData(id);if(!pack)return;
+  const {s,counts,events,cat,unknowns}=pack;
+  const items=(cat?.items||[]).filter(x=>(x.warehouseId||LEGACY_WH)===(s.warehouseId||LEGACY_WH));
+  const result=items.map(item=>{
+    const key=item.itemKey||makeItemKey(item.warehouseId,item.code),
+      has=Object.prototype.hasOwnProperty.call(counts,key)||Object.prototype.hasOwnProperty.call(counts,item.code),
+      raw=Object.prototype.hasOwnProperty.call(counts,key)?counts[key]:counts[item.code],
+      v=has?Number(raw||0):(s.status==='closed'?0:null),d=v===null?null:v-itemSysQty(item);
+    return {'Kho':item.warehouseName||warehouseName(item.warehouseId),'Ngành hàng':item.category,'Nhóm hàng':item.group,'Mã sản phẩm':item.code,'Tên sản phẩm':item.name,'Nhà sản xuất':item.manufacturer,'SL hệ thống':itemSysQty(item),'SL kiểm kê':v===null?'':v,'Chênh lệch':d===null?'':d,'Trạng thái':d===null?'Chưa kiểm':Math.abs(d)<1e-9?'Khớp':d<0?'Thiếu':'Dư'}
+  });
+  const groupMap=new Map();
+  for(const r of result){
+    const k=r['Ngành hàng']+'|||'+r['Nhóm hàng'];
+    if(!groupMap.has(k))groupMap.set(k,{'Ngành hàng':r['Ngành hàng'],'Nhóm hàng':r['Nhóm hàng'],'Số mã':0,'SL hệ thống':0,'SL kiểm kê':0,'Mã thiếu':0,'Mã dư':0,'Mã khớp':0});
+    const g=groupMap.get(k);g['Số mã']++;g['SL hệ thống']+=Number(r['SL hệ thống']||0);g['SL kiểm kê']+=Number(r['SL kiểm kê']||0);
+    if(r['Trạng thái']==='Thiếu')g['Mã thiếu']++;else if(r['Trạng thái']==='Dư')g['Mã dư']++;else if(r['Trạng thái']==='Khớp')g['Mã khớp']++
+  }
+  const logs=events.map(e=>({'Thời gian':new Date(e.ts||e.at).toLocaleString('vi-VN',{hour12:false}),'Mã NV':e.employeeId||'','Nhân viên':e.name||'','Email':e.email||'','Kho':e.warehouseName||warehouseName(e.warehouseId),'Ngành hàng':e.category||'','Nhóm hàng':e.group||'','Mã sản phẩm':e.code||'','Tên sản phẩm':e.productName||'','Thao tác':e.action||'','Thay đổi':e.delta??'','SL sau':e.qtyAfter??'','Nguồn':e.source||''}));
+  const unknownRows=unknownRowsForExport(unknowns);
+  const wb=XLSX.utils.book_new();
+  for(const [data,name] of [[result,'Ket qua'],[[...groupMap.values()],'Theo nhom'],[logs,'Nhat ky'],[unknownRows,'Ma ngoai data']]){
+    const ws=XLSX.utils.json_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb,ws,name)
+  }
+  XLSX.writeFile(wb,'kiem-ke-'+safeName(s.name)+'.xlsx');
+  toast(`Đã xuất Excel • ${unknownRows.length} mã ngoài data`,'ok')
+};
+
+const _v612SwitchTab=switchTab;
+switchTab=function(name){
+  _v612SwitchTab(name);
+  if(name==='unknown')renderUnknowns()
+};
+const _v612RenderAll=renderAll;
+renderAll=function(){
+  _v612RenderAll();
+  renderUnknownBadge();
+  if(document.getElementById('tab-unknown')?.classList.contains('active'))renderUnknowns()
+};
+/* ===== END v6.12 ===== */
+
 
 
 /* ===== END v6.9 ===== */
