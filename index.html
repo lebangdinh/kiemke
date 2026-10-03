@@ -130,6 +130,36 @@
       #tab-print .row .btn{flex:1 1 46%}
     }
 
+  
+    .count-result-card{border-radius:15px;padding:11px 12px;border:1px solid #e2e8f0;background:#f8fafc}
+    .count-result-card.short{background:#fff7ed;border-color:#fed7aa}
+    .count-result-card.equal{background:#ecfdf3;border-color:#86efac}
+    .count-result-card.over{background:#fff1f2;border-color:#fda4af}
+    .count-result-main{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .count-result-main .status-big{font-size:17px;font-weight:1000;letter-spacing:.2px}
+    .count-result-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:9px}
+    .count-result-grid>div{background:rgba(255,255,255,.72);border:1px solid rgba(148,163,184,.22);border-radius:10px;padding:7px;text-align:center}
+    .count-result-grid span{display:block;font-size:9px;color:#64748b;font-weight:800;text-transform:uppercase}
+    .count-result-grid b{display:block;font-size:16px;margin-top:2px}
+    .last-scan.short{background:#fff7ed;border-color:#fed7aa}
+    .last-scan.equal{background:#ecfdf3;border-color:#86efac}
+    .last-scan.over{background:#fff1f2;border-color:#fda4af}
+    .scan-quick-actions{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap}
+    .scan-quick-actions .btn{padding:8px 10px;font-size:12px}
+    .quick-qty-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .quick-qty-stats>div{border:1px solid #e2e8f0;border-radius:13px;padding:10px;text-align:center;background:#f8fafc}
+    .quick-qty-stats span{display:block;color:#64748b;font-size:11px;font-weight:800}.quick-qty-stats b{display:block;font-size:24px;margin-top:2px}
+    .quick-qty-input{font-size:28px!important;font-weight:1000!important;text-align:center;padding:14px!important}
+    .qty-stack{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}.qty-stack .quick-btn{padding:8px 9px;border-radius:10px}
+    @media(max-width:900px){
+      .last-scan{position:relative}
+      .count-result-grid{grid-template-columns:repeat(3,1fr)}
+      .count-result-grid b{font-size:18px}
+      .scan-quick-actions .btn{flex:1}
+      .quick-qty-modal{padding-bottom:max(20px,env(safe-area-inset-bottom))}
+      .qty-stack .quick-btn{font-size:0;width:38px;height:36px;padding:0}.qty-stack .quick-btn:after{content:'🔢';font-size:16px}
+    }
+
   </style>
 </head>
 <body>
@@ -420,6 +450,35 @@
         <button class="btn" onclick="closeModal('warehouseSwitchModal')">Hủy</button>
         <button id="switchWarehouseNewBtn" class="btn outline hide" onclick="forceNewWarehouseSession()">＋ Tạo phiên mới</button>
         <button id="switchWarehouseOk" class="btn primary" onclick="confirmSwitchWarehouse()">Chuyển kho</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="quickQtyModal" class="modal">
+    <div class="modalbox quick-qty-modal">
+      <div class="row">
+        <div>
+          <h3 style="margin:0">🔢 Nhập nhanh số lượng</h3>
+          <div id="quickQtyCode" class="code small" style="margin-top:5px"></div>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn outline" onclick="closeModal('quickQtyModal')">✕</button>
+      </div>
+      <div id="quickQtyName" style="font-weight:900;margin-top:10px"></div>
+      <div id="quickQtyMeta" class="small muted" style="margin-top:4px"></div>
+      <div class="quick-qty-stats" style="margin-top:14px">
+        <div><span>Tồn sổ</span><b id="quickQtySystem">0</b></div>
+        <div><span>Đang kiểm</span><b id="quickQtyCurrent">0</b></div>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>Nhập tổng số lượng thực tế đã đếm</label>
+        <input id="quickQtyInput" class="quick-qty-input" type="number" min="0" step="1" inputmode="numeric"
+          placeholder="Nhập số lượng…" onkeydown="if(event.key==='Enter'){confirmQuickQty();event.preventDefault()}">
+      </div>
+      <div id="quickQtyPreview" class="count-result-card" style="margin-top:12px"></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal('quickQtyModal')">Hủy</button>
+        <button class="btn primary" onclick="confirmQuickQty()">✓ Lưu số lượng</button>
       </div>
     </div>
   </div>
@@ -1825,13 +1884,117 @@ const _v66SwitchTab=switchTab;
 switchTab=function(name){_v66SwitchTab(name);if(name==='compare')populateCompareSelectors();if(name==='diff'){populateDiffGroups();renderResultInsights()}};
 const _v66RenderAll=renderAll;
 renderAll=function(){_v66RenderAll();if(document.getElementById('tab-diff')?.classList.contains('active'))renderResultInsights();if(document.getElementById('tab-compare')?.classList.contains('active'))populateCompareSelectors()};
-/* ===== END v6.6 ===== */
 
-/* ===== END v6.5 ===== */
+/* ===== v6.7 REALTIME COUNT STATUS + QUICK QTY ===== */
+let quickQtyKey='', quickQtyItem=null;
 
-/* ===== END v6 ===== */
+function countState(item,qty){
+  const sys=Number(itemSysQty(item)||0),q=Number(qty||0),d=q-sys;
+  if(Math.abs(d)<1e-9)return {kind:'equal',label:'✅ ĐỦ',detail:'Đã khớp tồn sổ',sys,q,d};
+  if(d<0)return {kind:'short',label:`CÒN THIẾU ${nfmt(Math.abs(d))}`,detail:`Cần thêm ${nfmt(Math.abs(d))} để đủ`,sys,q,d};
+  return {kind:'over',label:`⚠️ THỪA ${nfmt(d)}`,detail:`Thực tế đang cao hơn sổ ${nfmt(d)}`,sys,q,d}
+}
+function countStateHtml(item,qty,compact=false){
+  const st=countState(item,qty);
+  return `<div class="count-result-card ${st.kind}">
+    <div class="count-result-main"><span class="status-big">${st.label}</span>${compact?'':`<span class="small muted">${esc(st.detail)}</span>`}</div>
+    <div class="count-result-grid">
+      <div><span>Tồn sổ</span><b>${nfmt(st.sys)}</b></div>
+      <div><span>Đã kiểm</span><b>${nfmt(st.q)}</b></div>
+      <div><span>Chênh</span><b>${st.d>0?'+':''}${nfmt(st.d)}</b></div>
+    </div>
+  </div>`
+}
+function statusTone(kind){
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+    const ctx=new AC(), tones=kind==='equal'?[[980,.06,0],[1250,.08,.09]]:kind==='over'?[[260,.10,0],[210,.12,.13]]:[[650,.055,0]];
+    tones.forEach(([freq,dur,delay])=>{const o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=freq;g.gain.value=.045;o.connect(g);g.connect(ctx.destination);o.start(ctx.currentTime+delay);o.stop(ctx.currentTime+delay+dur)});
+    setTimeout(()=>{try{ctx.close()}catch{}},450)
+  }catch{}
+  try{
+    if(navigator.vibrate)navigator.vibrate(kind==='equal'?[55,35,80]:kind==='over'?[90,45,90]:35)
+  }catch{}
+}
+function showRealtimeCountResult(item,qty,source='scan'){
+  const box=document.getElementById('lastScan');if(!box||!item)return;
+  const st=countState(item,qty),key=item.itemKey||makeItemKey(item.warehouseId,item.code);
+  box.className='last-scan '+st.kind;
+  box.innerHTML=`<div><b>${esc(item.name)}</b></div>
+    <div class="small muted" style="margin-top:3px"><span class="code">${esc(item.code)}</span> • ${esc(item.group||item.category||'')}</div>
+    ${countStateHtml(item,qty)}
+    <div class="scan-quick-actions">
+      <button class="btn outline" onclick="openQuickQty('${esc(key)}')">🔢 Nhập nhanh SL</button>
+      <button class="btn outline" onclick="addCountAndShow('${esc(key)}',-1,'manual-step')">−1</button>
+      <button class="btn outline" onclick="addCountAndShow('${esc(key)}',1,'manual-step')">＋1</button>
+    </div>`;
+  statusTone(st.kind);
+  toast(st.kind==='equal'?`✅ ${item.name}: ĐỦ`:st.kind==='over'?`⚠ ${item.name}: THỪA ${nfmt(st.d)}`:`${item.name}: còn thiếu ${nfmt(Math.abs(st.d))}`,st.kind==='equal'?'ok':st.kind==='over'?'err':'')
+}
+async function v67AuthoritativeAdd(key,delta=1,source='scan'){
+  const s=currentSession(),item=resolveItemArg(key,s);if(!s||!item)return null;
+  if(s.status!=='active'){toast(s.status==='paused'?'Phiên đang tạm dừng.':'Phiên chưa sẵn sàng để kiểm.','err');return null}
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return null;
+  const itemKey=item.itemKey||makeItemKey(item.warehouseId,item.code),before=getCount(s,itemKey)??0;
+  localSetKey(itemKey,Math.max(0,before+delta),source);
+  let authoritative=getCount(s,itemKey)??0;
+  if(typeof cloudDb!=='undefined'&&cloudDb&&cloudUser&&cloudPermitted){
+    try{
+      await cloudWriteSessionMeta(s);
+      const ref=cloudDb.ref(CLOUD_ROOT+'/sessions/'+s.id+'/counts/'+itemKey);
+      const result=await ref.transaction(cur=>{const q=Number(cur&&typeof cur==='object'?cur.qty:cur)||0;return {qty:Math.max(0,q+delta),updatedAt:Date.now(),updatedBy:cloudActor()}});
+      const val=result.snapshot.val()||{};authoritative=Number(val.qty||0);
+      if(Number(getCount(s,itemKey)??0)!==authoritative){s.counts[itemKey]=authoritative;s.updatedAt=nowIso();saveState();renderAll()}
+      await cloudRecordEvent(s,item,{source,action:delta>=0?'add':'subtract',delta,qtyBefore:null,qtyAfter:authoritative})
+    }catch(e){console.error(e);toast('Lượt kiểm đang lưu tạm trên máy','err')}
+  }
+  return authoritative
+}
+async function addCountAndShow(key,delta=1,source='manual-step'){
+  const item=resolveItemArg(key,currentSession());if(!item)return;
+  const q=await v67AuthoritativeAdd(key,delta,source);if(q===null)return;
+  showRealtimeCountResult(item,q,source)
+}
+addCount=v67AuthoritativeAdd;
 
-</script>
+function suspiciousManualQty(item,val){
+  const sys=Math.max(0,Number(itemSysQty(item)||0)),v=Math.max(0,Number(val)||0),diff=Math.abs(v-sys);
+  if(sys===0)return v>=10;
+  return diff>=Math.max(5,Math.ceil(sys*.75));
+}
+async function requestManualQty(key,val,source='manual-total'){
+  const s=currentSession(),item=resolveItemArg(key,s);if(!s||!item)return;
+  let v=Number(val);if(!Number.isFinite(v)||v<0){toast('Số lượng không hợp lệ','err');return}
+  v=Math.round(v*10000)/10000;
+  if(suspiciousManualQty(item,v)){
+    const sys=itemSysQty(item),d=v-sys;
+    const ok=await askConfirm('Xác nhận số lượng chênh lớn',`Sản phẩm <b>${esc(item.name)}</b><br>Tồn sổ: <b>${nfmt(sys)}</b> • Bạn nhập: <b>${nfmt(v)}</b><br>Chênh lệch: <b>${d>0?'+':''}${nfmt(d)}</b><br><br>Xác nhận đây là số lượng thực tế đã đếm?`,'Xác nhận lưu');
+    if(!ok){renderAll();return}
+  }
+  await setCount(key,v,source);
+  const q=getCount(s,item.itemKey||makeItemKey(item.warehouseId,item.code))??v;
+  showRealtimeCountResult(item,q,source)
+}
+qtyControl=function(item,s){
+  const key=item.itemKey||makeItemKey(item.warehouseId,item.code),v=getCount(s,key),shown=v===null?'':v;
+  return `<div class="qty-stack"><div class="qtybox"><button onclick="addCountAndShow('${esc(key)}',-1,'manual-step')">−</button><input inputmode="numeric" value="${shown}" placeholder="—" onfocus="this.select()" onchange="requestManualQty('${esc(key)}',this.value,'manual-total')"><button onclick="addCountAndShow('${esc(key)}',1,'manual-step')">＋</button></div><button class="btn outline quick-btn" title="Nhập nhanh số lượng" onclick="openQuickQty('${esc(key)}')">🔢</button></div>`
+};
 
-</body>
-</html>
+function openQuickQty(key){
+  const s=currentSession(),item=resolveItemArg(key,s);if(!s||!item)return;
+  if(s.status!=='active'){toast(s.status==='paused'?'Phiên đang tạm dừng.':'Phiên chưa sẵn sàng.','err');return}
+  quickQtyKey=item.itemKey||makeItemKey(item.warehouseId,item.code);quickQtyItem=item;
+  const cur=getCount(s,quickQtyKey)??0,sys=itemSysQty(item);
+  document.getElementById('quickQtyCode').textContent=item.code;
+  document.getElementById('quickQtyName').textContent=item.name;
+  document.getElementById('quickQtyMeta').textContent=(item.category||'')+' • '+(item.group||'')+' • '+(item.warehouseName||warehouseName(item.warehouseId));
+  document.getElementById('quickQtySystem').textContent=nfmt(sys);
+  document.getElementById('quickQtyCurrent').textContent=nfmt(cur);
+  const input=document.getElementById('quickQtyInput');input.value=cur||'';updateQuickQtyPreview();
+  input.oninput=updateQuickQtyPreview;openModal('quickQtyModal');setTimeout(()=>{input.focus();input.select()},120)
+}
+function updateQuickQtyPreview(){
+  const box=document.getElementById('quickQtyPreview'),input=document.getElementById('quickQtyInput');if(!box||!quickQtyItem)return;
+  const v=input.value===''?0:Number(input.value);box.outerHTML=countStateHtml(quickQtyItem,Number.isFinite(v)?v:0).replace('class="count-result-card','id="quickQtyPreview" class="count-result-card')
+}
+async function confirmQuickQty(){
