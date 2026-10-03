@@ -67,6 +67,12 @@
     .hide{display:none!important}
 
     .cloudbox{display:flex;align-items:center;gap:8px;margin-left:auto}.cloudbtn{border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;border-radius:12px;padding:8px 10px;font-weight:800;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cloud-dot{width:9px;height:9px;border-radius:50%;background:#94a3b8;box-shadow:0 0 0 3px rgba(148,163,184,.15)}.cloud-dot.ok{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.18)}.cloud-dot.warn{background:#f59e0b}.cloud-dot.err{background:#ef4444}.cloudtext{font-size:11px;color:#cbd5e1;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sync-banner{margin-bottom:14px;border-radius:15px;padding:11px 13px;display:flex;gap:10px;align-items:center;background:#eff6ff;border:1px solid #bfdbfe}.sync-banner.off{background:#fff7ed;border-color:#fed7aa}.sync-banner.err{background:#fff1f2;border-color:#fecdd3}.sync-banner .txt{min-width:0;flex:1}.sync-banner .txt b{display:block}.sync-banner .txt span{font-size:12px;color:#667085}.log-toolbar{display:grid;grid-template-columns:1.2fr 1fr 1fr 2fr auto;gap:10px;margin-bottom:12px}.worker-chip{display:inline-flex;align-items:center;gap:5px;background:#eef2ff;color:#3730a3;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:800}.cloud-card{border-color:#bfdbfe;background:linear-gradient(135deg,#eff6ff,#fff)}
+    .identity-strip{position:sticky;top:58px;z-index:35;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);box-shadow:0 3px 12px rgba(15,23,42,.05)}
+    .identity-inner{max-width:1380px;margin:auto;padding:7px 16px;display:flex;align-items:center;gap:8px;overflow:auto;scrollbar-width:none}.identity-inner::-webkit-scrollbar{display:none}
+    .identity-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 9px;background:#f8fafc;border:1px solid #e2e8f0;font-size:11px;font-weight:800;white-space:nowrap}
+    .identity-pill.online{background:#ecfdf3;border-color:#a7f3d0;color:#047857}.identity-pill.offline{background:#fff7ed;border-color:#fed7aa;color:#9a3412}
+    .employee-table td,.employee-table th{white-space:nowrap}.profile-lock{padding:10px 11px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;margin-top:10px}
+    @media(max-width:900px){.identity-strip{top:54px}.identity-inner{padding:6px 10px}.identity-pill{font-size:10px}.cloudtext{display:none}.cloudbtn{max-width:42vw;padding:7px 9px}.session-pill{display:none}.cloudbox{margin-left:auto}.log-toolbar{grid-template-columns:1fr 1fr}.log-toolbar .wide{grid-column:1/-1}}
     @media(max-width:900px){.cloudtext{display:none}.cloudbtn{max-width:42vw;padding:7px 9px}.session-pill{display:none}.cloudbox{margin-left:auto}.log-toolbar{grid-template-columns:1fr 1fr}.log-toolbar .wide{grid-column:1/-1}}
     @media(max-width:900px){
       .container{padding:12px 10px 92px}.g4{grid-template-columns:repeat(2,1fr)}.g3,.g2{grid-template-columns:1fr}.scan-layout{grid-template-columns:1fr}.toolbar{grid-template-columns:1fr 1fr}.toolbar .wide{grid-column:1/-1}.print-controls{grid-template-columns:1fr 1fr}.print-controls .wide{grid-column:1/-1}.card{padding:13px;border-radius:15px}
@@ -85,11 +91,18 @@
 <body>
   <header class="topbar">
     <div class="topinner">
-      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v2 Đồng bộ</small></div>
+      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v6 Nhân viên</small></div>
       <div class="session-pill"><b id="topSession">Chưa có phiên</b><span id="topStatus">—</span></div>
       <div class="cloudbox no-print"><span id="cloudDot" class="cloud-dot"></span><span id="cloudStatus" class="cloudtext">Chưa kết nối</span><button id="cloudAuthBtn" class="cloudbtn" onclick="cloudAuthAction()">🔑 Đăng nhập</button></div>
     </div>
   </header>
+  <div id="identityStrip" class="identity-strip no-print">
+    <div class="identity-inner">
+      <span id="identityOnline" class="identity-pill offline">● OFFLINE</span>
+      <span id="identityWorker" class="identity-pill">👤 Chưa nhận diện nhân viên</span>
+      <span id="identityWarehouse" class="identity-pill">🏬 Chưa chọn kho</span>
+    </div>
+  </div>
 
   <main class="container">
     <nav class="tabs no-print">
@@ -231,6 +244,17 @@
           <div class="row" style="margin-top:12px"><button class="btn primary" onclick="cloudUploadCurrentCatalog()">⬆ Đẩy data hiện tại lên Cloud</button><button class="btn outline" onclick="cloudRefreshEverything()">↻ Tải lại từ Cloud</button><button class="btn outline" onclick="openProfile()">👤 Tên người kiểm</button></div>
           <div id="managerCloudInfo" class="small muted" style="margin-top:10px"></div>
         </div>
+
+        <div class="card" style="margin-top:14px">
+          <div class="row">
+            <div><h3 style="margin:0">👥 Nhân viên kiểm kê</h3><div class="small muted" style="margin-top:4px">Hồ sơ Google đã đăng ký và thống kê thao tác trong phiên đang mở.</div></div>
+            <div class="spacer"></div>
+            <button class="btn outline" onclick="managerLoadEmployees(true)">↻ Làm mới</button>
+          </div>
+          <div id="managerEmployeesSummary" class="small muted" style="margin-top:10px"></div>
+          <div id="managerEmployees" class="tablewrap" style="margin-top:10px"><div class="empty">Đăng nhập Cloud để xem danh sách nhân viên.</div></div>
+        </div>
+
         <div class="card" style="margin-top:14px">
           <div class="row">
             <div><h3 style="margin:0">⬆ Cập nhật tồn kho tổng hợp</h3><div class="small muted" style="margin-top:4px">Mỗi ngày chỉ cần xuất 1 file tổng hợp từ Report. Tool tự tách kho theo Mã siêu thị + Tên siêu thị và đồng bộ lên Cloud.</div></div>
@@ -276,11 +300,24 @@
 
   <div id="profileModal" class="modal">
     <div class="modalbox">
-      <h3>👤 Tên người kiểm kê</h3>
-      <div class="small muted" style="margin-bottom:12px">Tên này sẽ được ghi vào nhật ký ở từng lần bắn/sửa mã. Nên nhập theo dạng “Mã NV - Họ tên”.</div>
-      <div class="field"><label>Tên hiển thị</label><input id="profileName" placeholder="VD: 123456 - Nguyễn Văn A"></div>
-      <div id="profileEmail" class="small muted" style="margin-top:8px"></div>
-      <div class="modal-actions"><button class="btn" onclick="closeModal('profileModal')">Hủy</button><button class="btn primary" onclick="saveCloudProfile()">Lưu</button></div>
+      <h3 id="profileTitle">👤 Hồ sơ nhân viên kiểm kê</h3>
+      <div id="profileHelp" class="small muted" style="margin-bottom:12px">Mỗi tài khoản Google gắn với một Mã NV và Họ tên để truy vết chính xác từng lượt kiểm.</div>
+      <div class="grid g2">
+        <div class="field"><label>Mã nhân viên <span style="color:#dc2626">*</span></label><input id="profileEmployeeId" autocomplete="off" placeholder="VD: 123456"></div>
+        <div class="field"><label>Họ và tên <span style="color:#dc2626">*</span></label><input id="profileName" autocomplete="name" placeholder="VD: Nguyễn Văn A"></div>
+      </div>
+      <div id="profileEmail" class="small muted" style="margin-top:10px"></div>
+      <div id="profileLockNotice" class="profile-lock small muted"></div>
+      <div class="modal-actions" style="justify-content:space-between;flex-wrap:wrap">
+        <div class="row">
+          <button id="profileLogoutBtn" class="btn outline" onclick="cloudSignOut();closeModal('profileModal')">⇄ Đổi nhân viên / Đăng xuất</button>
+          <button id="profileUnlockBtn" class="btn outline hide" onclick="unlockProfileEdit()">🔐 Sửa bằng quyền QL</button>
+        </div>
+        <div class="row">
+          <button id="profileCancelBtn" class="btn" onclick="closeModal('profileModal')">Đóng</button>
+          <button id="profileSaveBtn" class="btn primary" onclick="saveCloudProfile()">Lưu hồ sơ</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1156,6 +1193,196 @@ renderAll=function(){_v3RenderAll();renderWorkScope();};
 
 /* initial migration */
 ensureWarehouseState();populateWarehouseUi();renderAll();
+
+
+/* ===== v6 NHẬN DIỆN NHÂN VIÊN ===== */
+let profileEditUnlocked=false, profileForceSetup=false, cloudProfilesCache={}, cloudProfilesLoadedAt=0;
+
+function profileComplete(p=cloudProfile){
+  return !!(p && String(p.employeeId||'').trim() && String(p.name||'').trim());
+}
+function employeeLabel(p){
+  if(!p)return '';
+  const id=String(p.employeeId||'').trim(), name=String(p.name||'').trim();
+  return [id,name].filter(Boolean).join(' - ') || p.email || 'Nhân viên';
+}
+function eventWorkerKey(e){return String(e?.employeeId||e?.uid||e?.email||e?.name||'')}
+function eventWorkerLabel(e){const id=String(e?.employeeId||'').trim(),name=String(e?.name||'').trim();return [id,name].filter(Boolean).join(' - ')||e?.email||'Nhân viên'}
+
+cloudActor=function(){
+  return {uid:cloudUser?.uid||'',employeeId:String(cloudProfile?.employeeId||'').trim(),name:cloudProfileName(),email:cloudUser?.email||'',deviceId:deviceId()}
+};
+
+const _v6CloudLoadProfile=cloudLoadProfile;
+cloudLoadProfile=async function(){
+  await _v6CloudLoadProfile();
+  if(cloudUser){
+    if(!cloudProfile)cloudProfile={};
+    cloudProfile.email=cloudUser.email||cloudProfile.email||'';
+    if(!profileComplete(cloudProfile))setTimeout(()=>openProfile(true),120);
+  }
+  renderIdentityStrip();
+};
+
+openProfile=function(forceSetup=false){
+  if(!cloudUser){cloudSignIn();return}
+  profileForceSetup=!!forceSetup || !profileComplete(cloudProfile);
+  profileEditUnlocked=profileForceSetup;
+  const existing=profileComplete(cloudProfile);
+  document.getElementById('profileEmployeeId').value=cloudProfile?.employeeId||'';
+  document.getElementById('profileName').value=cloudProfile?.name||cloudUser?.displayName||'';
+  document.getElementById('profileEmail').textContent='Google: '+(cloudUser?.email||'');
+  document.getElementById('profileTitle').textContent=profileForceSetup?'👤 Khai báo nhân viên lần đầu':'👤 Hồ sơ nhân viên kiểm kê';
+  document.getElementById('profileHelp').textContent=profileForceSetup?'Nhập Mã nhân viên và Họ tên. Từ lần sau hệ thống sẽ tự nhận diện tài khoản này.':'Hồ sơ đã gắn với tài khoản Google. Muốn đổi Mã NV/Họ tên cần quyền Quản Lý.';
+  document.getElementById('profileCancelBtn').classList.toggle('hide',profileForceSetup);
+  document.getElementById('profileLogoutBtn').classList.toggle('hide',profileForceSetup);
+  document.getElementById('profileUnlockBtn').classList.toggle('hide',profileForceSetup||!existing);
+  setProfileEditable(profileForceSetup||!existing);
+  openModal('profileModal');
+  setTimeout(()=>document.getElementById(profileForceSetup?'profileEmployeeId':'profileName')?.focus(),100);
+};
+function setProfileEditable(canEdit){
+  document.getElementById('profileEmployeeId').disabled=!canEdit;
+  document.getElementById('profileName').disabled=!canEdit;
+  document.getElementById('profileSaveBtn').classList.toggle('hide',!canEdit);
+  document.getElementById('profileLockNotice').innerHTML=canEdit
+    ? '<b>✍️ Đang cho phép chỉnh hồ sơ.</b> Sau khi lưu, hồ sơ sẽ được khóa.'
+    : '<b>🔒 Hồ sơ đã khóa.</b> Bấm “Sửa bằng quyền QL” và nhập mật khẩu Quản Lý để thay đổi.';
+}
+function unlockProfileEdit(){
+  const p=prompt('Nhập mật khẩu Quản Lý để sửa hồ sơ nhân viên');
+  if(p!==MANAGER_PASSWORD){toast('Sai mật khẩu Quản Lý','err');return}
+  profileEditUnlocked=true;setProfileEditable(true);document.getElementById('profileUnlockBtn').classList.add('hide');toast('Đã mở quyền sửa hồ sơ','ok')
+}
+saveCloudProfile=async function(){
+  if(!cloudUser){toast('Cần đăng nhập Google','err');return}
+  if(profileComplete(cloudProfile)&&!profileEditUnlocked&&!profileForceSetup){toast('Hồ sơ đã khóa. Cần quyền Quản Lý để sửa.','err');return}
+  const employeeId=document.getElementById('profileEmployeeId').value.trim();
+  const name=document.getElementById('profileName').value.trim().replace(/\s+/g,' ');
+  if(employeeId.length<3){toast('Mã nhân viên chưa hợp lệ','err');return}
+  if(name.length<2){toast('Nhập đầy đủ họ tên nhân viên','err');return}
+  cloudProfile={...(cloudProfile||{}),employeeId,name,email:cloudUser.email||'',locked:true,createdAt:cloudProfile?.createdAt||Date.now(),updatedAt:Date.now()};
+  localStorage.setItem('kiemKeC933_profileName',name);
+  localStorage.setItem('kiemKeC933_employeeId',employeeId);
+  try{if(cloudDb)await cloudDb.ref(CLOUD_ROOT+'/profiles/'+cloudUser.uid).set(cloudProfile)}
+  catch(e){console.error(e);toast('Chưa lưu được hồ sơ lên Cloud','err');return}
+  profileForceSetup=false;profileEditUnlocked=false;closeModal('profileModal');renderCloudBanner();renderIdentityStrip();toast('✓ Đã nhận diện '+employeeId+' - '+name,'ok')
+};
+
+function ensureWorkerReady(){
+  if(!cloudUser){toast('Đăng nhập Google trước khi kiểm kê','err');void cloudSignIn();return false}
+  if(!profileComplete(cloudProfile)){toast('Khai báo Mã NV và Họ tên trước khi kiểm kê','err');openProfile(true);return false}
+  return true
+}
+function renderIdentityStrip(){
+  const on=document.getElementById('identityOnline'),worker=document.getElementById('identityWorker'),wh=document.getElementById('identityWarehouse');
+  if(!on||!worker||!wh)return;
+  const online=!!(cloudUser&&cloudConnected&&cloudPermitted);
+  on.className='identity-pill '+(online?'online':'offline');
+  on.textContent=online?'● ONLINE • ĐỒNG BỘ':'● '+(cloudUser?'CHƯA ĐỒNG BỘ':'CHƯA ĐĂNG NHẬP');
+  worker.textContent=profileComplete(cloudProfile)?'👤 '+employeeLabel(cloudProfile):'👤 Chưa nhận diện nhân viên';
+  const s=currentSession();wh.textContent='🏬 '+(s?warehouseName(s.warehouseId):'Chưa chọn kho');
+  const btn=document.getElementById('cloudAuthBtn');
+  if(btn)btn.textContent=cloudUser?(profileComplete(cloudProfile)?'👤 '+employeeLabel(cloudProfile):'👤 Khai báo NV'):'🔑 Đăng nhập';
+}
+const _v6RenderCloudBanner=renderCloudBanner;
+renderCloudBanner=function(){
+  _v6RenderCloudBanner();
+  if(cloudUser&&profileComplete(cloudProfile)){
+    const el=document.getElementById('cloudBanner');
+    if(el&&cloudPermitted)el.innerHTML='<div class="txt"><b>☁️ Đang đồng bộ realtime</b><span>'+esc(employeeLabel(cloudProfile))+' • Mọi lượt kiểm đều lưu Mã NV, người kiểm và thời gian.</span></div><button class="btn outline" onclick="openProfile()">Hồ sơ</button>';
+  }
+  renderIdentityStrip()
+};
+const _v6RenderWorkScope=renderWorkScope;
+renderWorkScope=function(){const r=_v6RenderWorkScope();renderIdentityStrip();return r};
+
+const _v6OpenNewSession=openNewSession;
+openNewSession=function(){if(!ensureWorkerReady())return;return _v6OpenNewSession()};
+const _v6SetCount=setCount;
+setCount=function(...args){if(!ensureWorkerReady())return;return _v6SetCount(...args)};
+const _v6AddCount=addCount;
+addCount=function(...args){if(!ensureWorkerReady())return;return _v6AddCount(...args)};
+if(typeof processScan==='function'){
+  const _v6ProcessScan=processScan;
+  processScan=function(...args){if(!ensureWorkerReady())return;return _v6ProcessScan(...args)}
+}
+
+cloudRecordEvent=async function(s,item,{source='manual',action='set',delta=null,qtyBefore=null,qtyAfter=null}={}){
+  if(!cloudDb||!cloudUser||!cloudPermitted||!profileComplete(cloudProfile))return;
+  const a=cloudActor(),key=item.itemKey||makeItemKey(item.warehouseId,item.code);
+  const event={ts:Date.now(),at:nowIso(),sessionId:s.id,itemKey:key,warehouseId:item.warehouseId||s.warehouseId,warehouseName:item.warehouseName||warehouseName(item.warehouseId||s.warehouseId),code:item.code,productName:item.name||'',category:item.category||'',group:item.group||'',manufacturer:item.manufacturer||'',source,action,delta,qtyBefore,qtyAfter,...a};
+  const eventKey=cloudDb.ref(CLOUD_ROOT+'/sessions/'+s.id+'/events').push().key,updates={};
+  updates[CLOUD_ROOT+'/sessions/'+s.id+'/events/'+eventKey]=event;
+  updates[CLOUD_ROOT+'/sessionIndex/'+s.id+'/participants/'+a.uid]={employeeId:a.employeeId,name:a.name,email:a.email,lastAt:event.ts};
+  updates[CLOUD_ROOT+'/sessionIndex/'+s.id+'/updatedAt']=event.at;
+  await cloudDb.ref().update(updates)
+};
+
+populateLogFilters=function(){
+  const map=new Map();
+  cloudEvents.forEach(e=>{const k=eventWorkerKey(e);if(k&&!map.has(k))map.set(k,eventWorkerLabel(e))});
+  const workers=[...map.entries()].sort((a,b)=>a[1].localeCompare(b[1],'vi'));
+  const cats=[...new Set(cloudEvents.map(e=>e.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'vi'));
+  const groups=[...new Set(cloudEvents.map(e=>e.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'vi'));
+  const specs=[['logWorker',workers,'Tất cả nhân viên',true],['logCategory',cats,'Tất cả ngành hàng',false],['logGroup',groups,'Tất cả nhóm hàng',false]];
+  for(const [id,arr,label,isPair] of specs){
+    const el=document.getElementById(id);if(!el)continue;const old=el.value;
+    el.innerHTML='<option value="">'+label+'</option>'+(isPair?arr.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join(''):arr.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join(''));
+    if([...el.options].some(o=>o.value===old))el.value=old
+  }
+};
+filteredAudit=function(){
+  const w=document.getElementById('logWorker')?.value||'',c=document.getElementById('logCategory')?.value||'',g=document.getElementById('logGroup')?.value||'',q=slug(document.getElementById('logSearch')?.value||'');
+  return cloudEvents.filter(e=>(!w||eventWorkerKey(e)===w)&&(!c||e.category===c)&&(!g||e.group===g)&&(!q||slug((e.code||'')+' '+(e.productName||'')).includes(q)))
+};
+renderAuditLog=function(){
+  const el=document.getElementById('auditTable');if(!el)return;const arr=filteredAudit(),s=currentSession();
+  document.getElementById('logSummary').textContent=(s?warehouseName(s.warehouseId)+' • '+s.name+' • ':'')+arr.length.toLocaleString('vi-VN')+' thao tác hiển thị';
+  if(!arr.length){el.innerHTML='<div class="empty">Chưa có nhật ký đồng bộ cho phiên này.</div>';return}
+  el.innerHTML=`<table><thead><tr><th>Thời gian</th><th>Nhân viên</th><th>Kho</th><th>Mã SP</th><th>Sản phẩm</th><th>Nhóm hàng</th><th>Thao tác</th><th>SL sau</th></tr></thead><tbody>${arr.slice(0,1500).map(e=>`<tr><td>${new Date(e.ts||e.at).toLocaleString('vi-VN',{hour12:false})}</td><td><span class="worker-chip">👤 ${esc(eventWorkerLabel(e))}</span><div class="tiny muted">${esc(e.email||'')}</div></td><td><b>${esc(e.warehouseName||warehouseName(e.warehouseId))}</b></td><td class="code">${esc(e.code||'')}</td><td>${esc(e.productName||'')}</td><td>${esc(e.group||e.category||'')}</td><td>${e.action==='add'?'<span class="badge b-ok">+'+nfmt(e.delta||1)+'</span>':e.action==='subtract'?'<span class="badge b-danger">'+nfmt(e.delta||-1)+'</span>':'<span class="badge b-blue">Sửa '+nfmt(e.delta||0)+'</span>'}<div class="tiny muted">${esc(e.source||'')}</div></td><td><b>${nfmt(e.qtyAfter)}</b></td></tr>`).join('')}</tbody></table>`
+};
+exportLogCsv=function(){
+  const arr=filteredAudit(),head=['Thời gian','Mã NV','Họ tên','Email','Kho','Ngành hàng','Nhóm hàng','Mã sản phẩm','Tên sản phẩm','Thao tác','Thay đổi','SL sau','Nguồn'],lines=[head.map(csvCell).join(',')];
+  for(const e of arr)lines.push([new Date(e.ts||e.at).toLocaleString('vi-VN',{hour12:false}),e.employeeId||'',e.name||'',e.email||'',e.warehouseName||warehouseName(e.warehouseId),e.category,e.group,e.code,e.productName,e.action,e.delta,e.qtyAfter,e.source].map(csvCell).join(','));
+  downloadBlob(new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'}),'nhat-ky-'+safeName(currentSession()?.name||'kiem-ke')+'.csv')
+};
+
+async function managerLoadEmployees(force=false){
+  const box=document.getElementById('managerEmployees'),sum=document.getElementById('managerEmployeesSummary');if(!box)return;
+  if(!isManager()){return}
+  if(!cloudDb||!cloudUser||!cloudPermitted){box.innerHTML='<div class="empty">Đăng nhập Google và kết nối Cloud để xem nhân viên.</div>';if(sum)sum.textContent='';return}
+  if(force||!cloudProfilesLoadedAt||Date.now()-cloudProfilesLoadedAt>60000){
+    box.innerHTML='<div class="empty">Đang tải danh sách nhân viên…</div>';
+    try{const snap=await cloudDb.ref(CLOUD_ROOT+'/profiles').once('value');cloudProfilesCache=snap.val()||{};cloudProfilesLoadedAt=Date.now()}
+    catch(e){console.error(e);box.innerHTML='<div class="empty">Không tải được danh sách nhân viên.</div>';return}
+  }
+  renderManagerEmployees()
+}
+function renderManagerEmployees(){
+  const box=document.getElementById('managerEmployees'),sum=document.getElementById('managerEmployeesSummary');if(!box)return;
+  const metrics={};
+  cloudEvents.forEach(e=>{const k=e.uid||eventWorkerKey(e);if(!k)return;const m=metrics[k]||(metrics[k]={actions:0,items:new Set(),lastAt:0});m.actions++;m.items.add(e.itemKey||e.code);m.lastAt=Math.max(m.lastAt,Number(e.ts||0))});
+  const rows=Object.entries(cloudProfilesCache).map(([uid,p])=>({uid,...p,m:metrics[uid]||{actions:0,items:new Set(),lastAt:0}})).sort((a,b)=>String(a.employeeId||'').localeCompare(String(b.employeeId||''),'vi'));
+  if(sum)sum.textContent=`${rows.length} hồ sơ nhân viên • Phiên hiện tại: ${cloudEvents.length.toLocaleString('vi-VN')} thao tác`;
+  if(!rows.length){box.innerHTML='<div class="empty">Chưa có nhân viên nào đăng ký hồ sơ.</div>';return}
+  box.innerHTML=`<table class="employee-table"><thead><tr><th>Mã NV</th><th>Họ tên</th><th>Email Google</th><th>Mã đã thao tác</th><th>Lượt thao tác</th><th>Hoạt động cuối</th></tr></thead><tbody>${rows.map(r=>`<tr><td class="code">${esc(r.employeeId||'—')}</td><td><b>${esc(r.name||'—')}</b></td><td>${esc(r.email||'')}</td><td><b>${r.m.items.size}</b></td><td>${r.m.actions}</td><td>${r.m.lastAt?new Date(r.m.lastAt).toLocaleString('vi-VN',{hour12:false}):'—'}</td></tr>`).join('')}</tbody></table>`
+}
+const _v6RenderManager=renderManager;
+renderManager=function(){
+  _v6RenderManager();
+  if(!isManager())return;
+  const info=document.getElementById('managerCloudInfo');
+  if(info&&cloudUser&&profileComplete(cloudProfile))info.innerHTML+=`<br>Nhân viên hiện tại: <b>${esc(employeeLabel(cloudProfile))}</b>`;
+  void managerLoadEmployees(false)
+};
+
+const _v6RenderAll=renderAll;
+renderAll=function(){_v6RenderAll();renderIdentityStrip();if(isManager())renderManagerEmployees()};
+
+setTimeout(()=>{renderIdentityStrip();if(cloudUser&&!profileComplete(cloudProfile))openProfile(true)},180);
+/* ===== END v6 ===== */
+
 </script>
 
 </body>
