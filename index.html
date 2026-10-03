@@ -1998,3 +1998,729 @@ function suspiciousManualQty(item,val){
   if(sys===0)return v>=10;
   return diff>=Math.max(5,Math.ceil(sys*.75));
 }
+async function requestManualQty(key,val,source='manual-total'){
+  const s=currentSession(),item=resolveItemArg(key,s);if(!s||!item)return;
+  let v=Number(val);if(!Number.isFinite(v)||v<0){toast('Số lượng không hợp lệ','err');return}
+  v=Math.round(v*10000)/10000;
+  if(suspiciousManualQty(item,v)){
+    const sys=itemSysQty(item),d=v-sys;
+    const ok=await askConfirm('Xác nhận số lượng chênh lớn',`Sản phẩm <b>${esc(item.name)}</b><br>Tồn sổ: <b>${nfmt(sys)}</b> • Bạn nhập: <b>${nfmt(v)}</b><br>Chênh lệch: <b>${d>0?'+':''}${nfmt(d)}</b><br><br>Xác nhận đây là số lượng thực tế đã đếm?`,'Xác nhận lưu');
+    if(!ok){renderAll();return}
+  }
+  await setCount(key,v,source);
+  const q=getCount(s,item.itemKey||makeItemKey(item.warehouseId,item.code))??v;
+  showRealtimeCountResult(item,q,source)
+}
+qtyControl=function(item,s){
+  const key=item.itemKey||makeItemKey(item.warehouseId,item.code),v=getCount(s,key),shown=v===null?'':v;
+  return `<div class="qty-stack"><div class="qtybox"><button onclick="addCountAndShow('${esc(key)}',-1,'manual-step')">−</button><input inputmode="numeric" value="${shown}" placeholder="—" onfocus="this.select()" onchange="requestManualQty('${esc(key)}',this.value,'manual-total')"><button onclick="addCountAndShow('${esc(key)}',1,'manual-step')">＋</button></div><button class="btn outline quick-btn" title="Nhập nhanh số lượng" onclick="openQuickQty('${esc(key)}')">🔢</button></div>`
+};
+
+function openQuickQty(key){
+  const s=currentSession(),item=resolveItemArg(key,s);if(!s||!item)return;
+  if(s.status!=='active'){toast(s.status==='paused'?'Phiên đang tạm dừng.':'Phiên chưa sẵn sàng.','err');return}
+  quickQtyKey=item.itemKey||makeItemKey(item.warehouseId,item.code);quickQtyItem=item;
+  const cur=getCount(s,quickQtyKey)??0,sys=itemSysQty(item);
+  document.getElementById('quickQtyCode').textContent=item.code;
+  document.getElementById('quickQtyName').textContent=item.name;
+  document.getElementById('quickQtyMeta').textContent=(item.category||'')+' • '+(item.group||'')+' • '+(item.warehouseName||warehouseName(item.warehouseId));
+  document.getElementById('quickQtySystem').textContent=nfmt(sys);
+  document.getElementById('quickQtyCurrent').textContent=nfmt(cur);
+  const input=document.getElementById('quickQtyInput');input.value=cur||'';updateQuickQtyPreview();
+  input.oninput=updateQuickQtyPreview;openModal('quickQtyModal');setTimeout(()=>{input.focus();input.select()},120)
+}
+function updateQuickQtyPreview(){
+  const box=document.getElementById('quickQtyPreview'),input=document.getElementById('quickQtyInput');if(!box||!quickQtyItem)return;
+  const v=input.value===''?0:Number(input.value);box.outerHTML=countStateHtml(quickQtyItem,Number.isFinite(v)?v:0).replace('class="count-result-card','id="quickQtyPreview" class="count-result-card')
+}
+async function confirmQuickQty(){
+  const input=document.getElementById('quickQtyInput'),item=quickQtyItem,key=quickQtyKey;if(!item||!key)return;
+  const v=Number(input.value);if(!Number.isFinite(v)||v<0){toast('Nhập số lượng hợp lệ','err');return}
+  closeModal('quickQtyModal');await requestManualQty(key,v,'manual-quick');quickQtyItem=null;quickQtyKey=''
+}
+
+processScan=async function(raw){
+  if(pendingOutScopeItem)return;
+  const s=currentSession();if(!s||s.status!=='active'){toast(s?.status==='paused'?'Phiên đang tạm dừng.':'Phiên chưa sẵn sàng để kiểm.','err');return}
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return;
+  const t=Date.now(),clean=String(raw||'').trim();if(!clean)return;if(clean===lastScanValue&&t-lastScanAt<700)return;lastScanValue=clean;lastScanAt=t;
+  const code=normalizeScan(clean),box=document.getElementById('lastScan');
+  if(!code){box.className='last-scan bad';box.innerHTML='<b>⚠ Không map được mã</b><div class="small">'+esc(clean)+'</div>';beep(false);toast('Không tìm thấy mã trong data','err');return}
+  const item=findItemByCode(code,s);
+  if(!item){
+    const other=(sessionCatalog(s)?.items||[]).filter(x=>String(x.code)===String(code));
+    box.className='last-scan bad';box.innerHTML='<b>⛔ Mã không thuộc kho đang kiểm</b><div class="small">'+esc(code)+(other.length?' • Có tại: '+esc([...new Set(other.map(x=>x.warehouseName||warehouseName(x.warehouseId)))].join(', ')):'')+'</div>';beep(false);toast('Không nhận: mã thuộc kho khác','err');return
+  }
+  if(!scopeAllows(item,s)){box.className='last-scan bad';box.innerHTML='<b>⚠ Mã ngoài Ngành/Nhóm đang chọn</b><div class="small">'+esc(item.category)+' • '+esc(item.group)+'</div>';beep(false);showOutOfScopeScan(item,code);return}
+  const key=item.itemKey||makeItemKey(item.warehouseId,item.code),q=await v67AuthoritativeAdd(key,1,'scan');if(q===null)return;
+  showRealtimeCountResult(item,q,'scan')
+};
+
+acceptOutScopeScan=async function(changeScope){
+  const item=pendingOutScopeItem,s=currentSession();if(!item||!s)return cancelOutScopeScan();
+  if(changeScope){saveWorkScope({category:item.category||'',group:item.group||''},s);populateScopeFilters()}
+  const key=item.itemKey||makeItemKey(item.warehouseId,item.code);closeModal('outScopeModal');pendingOutScopeItem=null;pendingOutScopeCode='';
+  const q=await v67AuthoritativeAdd(key,1,'scan-outscope');if(q===null)return;
+  renderAll();showRealtimeCountResult(item,q,'scan-outscope')
+};
+
+const _v67RenderProductSearch=renderProductSearch;
+renderProductSearch=function(){_v67RenderProductSearch()};
+const _v67RenderRecent=renderRecent;
+renderRecent=function(){_v67RenderRecent()};
+
+/* ===== v6.9 SHARED SESSION / DEVICE-ONLY PAUSE ===== */
+const DEVICE_PAUSE_KEY='kiemKeC933_device_pause_v1';
+
+function readDevicePaused(){
+  try{
+    const v=JSON.parse(localStorage.getItem(DEVICE_PAUSE_KEY)||'{}');
+    return v&&typeof v==='object'&&!Array.isArray(v)?v:{}
+  }catch{return {}}
+}
+function writeDevicePaused(v){try{localStorage.setItem(DEVICE_PAUSE_KEY,JSON.stringify(v||{}))}catch{}}
+function isDevicePaused(id=currentSessionId){if(!id)return false;return !!readDevicePaused()[id]}
+function setDevicePaused(id,paused){
+  if(!id)return;
+  const m=readDevicePaused();
+  if(paused)m[id]={at:Date.now(),uid:cloudUser?.uid||'',employeeId:cloudProfile?.employeeId||''};
+  else delete m[id];
+  writeDevicePaused(m)
+}
+function normalizeLegacyPausedSession(s){
+  if(!s)return false;
+  if(s.status==='paused'){
+    s.status='active';s.pausedAt=null;s.updatedAt=s.updatedAt||nowIso();
+    return true
+  }
+  return false
+}
+async function syncLegacyPauseMigration(s){
+  if(!s||!normalizeLegacyPausedSession(s))return false;
+  saveState();
+  if(cloudUser&&cloudPermitted){try{await cloudWriteSessionMeta(s)}catch{}}
+  return true
+}
+function latestOpenSessionForWarehouse(id){
+  const arr=Object.values(state.sessions||{})
+    .filter(s=>s.warehouseId===id&&s.status!=='closed')
+    .sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)));
+  for(const s of arr)normalizeLegacyPausedSession(s);
+  return arr[0]||null
+}
+latestPausedForWarehouse=latestOpenSessionForWarehouse;
+
+sessionStatusText=function(s){
+  if(!s)return 'Chưa có phiên';
+  if(s.status==='closed')return 'Đã chốt';
+  return 'Phiên chung đang kiểm'
+};
+
+const _v69RenderTop=renderTop;
+renderTop=function(){
+  _v69RenderTop();
+  const s=currentSession(),e=document.getElementById('topStatus');
+  if(e&&s){
+    const local=s.status!=='closed'&&isDevicePaused(s.id)?' • Máy này đang dừng':'';
+    e.textContent=sessionStatusText(s)+local+' • '+fmtDate(s.updatedAt)
+  }
+};
+
+pauseCurrentSession=async function(silent=false){
+  const s=currentSession();
+  if(!s){toast('Chưa có phiên kiểm kê','err');return false}
+  await syncLegacyPauseMigration(s);
+  if(s.status==='closed'){toast('Phiên đã chốt.','err');return false}
+  if(isDevicePaused(s.id)){
+    setDevicePaused(s.id,false);
+    currentSessionId=s.id;state.activeSessionId=s.id;saveState();
+    if(typeof attachCloudActiveSession==='function')attachCloudActiveSession();
+    renderAll();switchTab('count');
+    if(!silent)toast('▶ Đã tiếp tục kiểm trên máy này','ok');
+    return true
+  }
+  try{if(scannerRunning)await stopScanner()}catch{}
+  setDevicePaused(s.id,true);
+  renderAll();
+  if(!silent)toast('⏸ Đã dừng trên máy này • phiên chung vẫn hoạt động','ok');
+  return true
+};
+
+resumeSession=async function(id){
+  const s=state.sessions[id];if(!s)return;
+  await syncLegacyPauseMigration(s);
+  if(s.status==='closed'){toast('Phiên đã chốt. Quản Lý cần mở lại nếu muốn sửa.','err');return}
+  setDevicePaused(id,false);
+  currentSessionId=id;state.activeSessionId=id;saveState();
+  if(typeof attachCloudActiveSession==='function')attachCloudActiveSession();
+  renderAll();switchTab('count');toast('▶ Đã vào phiên chung '+warehouseName(s.warehouseId),'ok')
+};
+
+const _v69OpenSession=openSession;
+openSession=function(id){
+  const s=state.sessions[id];if(!s)return;
+  normalizeLegacyPausedSession(s);
+  if(s.status!=='closed')setDevicePaused(id,false);
+  _v69OpenSession(id);
+  if(typeof attachCloudActiveSession==='function')attachCloudActiveSession()
+};
+
+let pendingSwitchFromSessionId=null;
+switchWarehouseFlow=async function(){
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return;
+  const s=currentSession();pendingSwitchFromSessionId=s?.id||null;
+  try{if(scannerRunning)await stopScanner()}catch{}
+  const ws=validWarehouses();
+  if(!ws.length){toast('Chưa có dữ liệu kho. Quản Lý cần nhập file tồn tổng hợp.','err');return}
+  const sel=document.getElementById('switchWarehouseSelect'),currentId=s?.warehouseId||'';
+  sel.innerHTML=ws.map(w=>`<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('');
+  const other=ws.find(w=>w.id!==currentId)||ws[0];sel.value=other.id;
+  updateWarehouseSwitchInfo();openModal('warehouseSwitchModal')
+};
+function markPreviousDeviceStopped(){
+  const old=pendingSwitchFromSessionId?state.sessions[pendingSwitchFromSessionId]:null;
+  if(old&&old.status!=='closed')setDevicePaused(old.id,true);
+  pendingSwitchFromSessionId=null
+}
+
+updateWarehouseSwitchInfo=function(){
+  const id=document.getElementById('switchWarehouseSelect')?.value||'',
+        box=document.getElementById('switchWarehouseInfo'),
+        btn=document.getElementById('switchWarehouseOk'),
+        newBtn=document.getElementById('switchWarehouseNewBtn');
+  const p=latestOpenSessionForWarehouse(id);
+  if(p){
+    const people=sessionParticipantLabels(p),creator=sessionCreatorLabel(p);
+    box.innerHTML=`<b>Có phiên chung đang hoạt động:</b> ${esc(p.name)}<br>`+
+      `👤 Người tạo: <b>${esc(creator)}</b>`+
+      `${people.length?`<br>👥 Đã tham gia: ${esc(people.join(', '))}`:''}`+
+      `<br>🕒 Hoạt động cuối: ${fmtDate(p.updatedAt||p.createdAt)}`+
+      `<br>📊 ${esc(sessionProgressText(p))}`+
+      `<br><br><b>Tiếp tục phiên chung</b> để kiểm nối tiếp. Lượt kiểm mới vẫn ghi riêng theo Mã NV.`;
+    btn.textContent='▶ Tiếp tục phiên chung';newBtn?.classList.remove('hide')
+  }else{
+    box.innerHTML=`Không có phiên đang mở của <b>${esc(warehouseName(id))}</b>.<br>Sẽ tạo <b>phiên kiểm kê mới</b>.`;
+    btn.textContent='🏬 Bắt đầu kho này';newBtn?.classList.add('hide')
+  }
+};
+
+confirmSwitchWarehouse=async function(){
+  const id=document.getElementById('switchWarehouseSelect')?.value||'';if(!id)return;
+  const p=latestOpenSessionForWarehouse(id);
+  if(p){
+    const me=(typeof employeeLabel==='function'&&cloudProfile)?employeeLabel(cloudProfile):'nhân viên hiện tại';
+    const creator=sessionCreatorLabel(p);
+    const ok=await askConfirm(
+      'Tiếp tục phiên kiểm kê chung',
+      `Phiên <b>${esc(p.name)}</b> do <b>${esc(creator)}</b> tạo đang hoạt động.<br><br>`+
+      `<b>${esc(me)}</b> sẽ tiếp tục trên cùng kết quả kiểm kê. Mọi lượt bắn vẫn ghi riêng theo người kiểm.<br><br>Tiếp tục?`,
+      'Tiếp tục phiên'
+    );
+    if(!ok)return;
+    markPreviousDeviceStopped();closeModal('warehouseSwitchModal');await resumeSession(p.id);return
+  }
+  closeModal('warehouseSwitchModal');createWarehouseSession(id)
+};
+
+renderSessionControls=function(){
+  const s=currentSession(),closed=s?.status==='closed',localPaused=s&&!closed&&isDevicePaused(s.id);
+  for(const id of ['pauseSessionBtn','mobilePauseBtn']){
+    const b=document.getElementById(id);if(!b)continue;
+    b.disabled=!s||closed;
+    b.textContent=localPaused?(id==='mobilePauseBtn'?'▶ Tiếp tục':'▶ Tiếp tục trên máy này'):(id==='mobilePauseBtn'?'⏸ Dừng máy này':'⏸ Dừng trên máy này')
+  }
+  for(const id of ['closeSessionBtn','mobileCloseBtn']){
+    const b=document.getElementById(id);if(b)b.disabled=!s||closed
+  }
+};
+
+function deviceCanCount(){
+  const s=currentSession();
+  if(!s){toast('Chưa có phiên kiểm kê','err');return false}
+  normalizeLegacyPausedSession(s);
+  if(s.status==='closed'){toast('Phiên đã chốt.','err');return false}
+  if(isDevicePaused(s.id)){toast('Máy này đang dừng kiểm. Bấm ▶ Tiếp tục trên máy này.','err');return false}
+  return true
+}
+
+const _v69SetCount=setCount;
+setCount=function(...args){if(!deviceCanCount())return;return _v69SetCount(...args)};
+
+const _v69AddCount=addCount;
+addCount=function(...args){if(!deviceCanCount())return;return _v69AddCount(...args)};
+
+const _v69AuthoritativeAdd=v67AuthoritativeAdd;
+v67AuthoritativeAdd=async function(...args){if(!deviceCanCount())return null;return _v69AuthoritativeAdd(...args)};
+
+const _v69ProcessScan=processScan;
+processScan=async function(...args){if(!deviceCanCount())return;return _v69ProcessScan(...args)};
+
+const _v69StartScanner=startScanner;
+startScanner=async function(){
+  if(!deviceCanCount())return;
+  return _v69StartScanner()
+};
+
+const _v69OpenQuickQty=openQuickQty;
+openQuickQty=function(...args){if(!deviceCanCount())return;return _v69OpenQuickQty(...args)};
+
+const _v69RequestManualQty=requestManualQty;
+requestManualQty=async function(...args){if(!deviceCanCount())return;return _v69RequestManualQty(...args)};
+
+const _v69CloseCurrentSession=closeCurrentSession;
+closeCurrentSession=async function(){
+  if(!isManager()){await managerPrompt();if(!isManager())return}
+  return _v69CloseCurrentSession()
+};
+
+renderSessions=function(){
+  const el=document.getElementById('sessionList');if(!el)return;
+  const arr=Object.values(state.sessions||{}).filter(s=>s.warehouseId&&s.warehouseId!==LEGACY_WH).sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)));
+  for(const s of arr)normalizeLegacyPausedSession(s);
+  el.innerHTML=arr.length?arr.map(s=>{
+    const active=s.id===currentSessionId,people=Object.values(s.participants||{}).map(x=>(x.employeeId?x.employeeId+' - ':'')+(x.name||x.email||'')).filter(Boolean);
+    const local=active&&s.status!=='closed'&&isDevicePaused(s.id);
+    const status=s.status==='closed'?'<span class="badge b-neutral">Đã chốt</span>':'<span class="badge b-ok">Đang kiểm</span>';
+    return `<div class="session-card ${active?'active-s':''}"><div><div class="row"><b>${esc(s.name)}</b><span class="badge b-blue">🏬 ${esc(warehouseName(s.warehouseId))}</span>${active?'<span class="badge b-blue">Đang mở</span>':''}${local?'<span class="badge status-paused">Máy này đang dừng</span>':''}${status}</div><div class="session-meta"><span>${fmtDate(s.createdAt)}</span>${s.note?'<span>• '+esc(s.note)+'</span>':''}${people.length?'<span>• 👤 '+esc(people.slice(0,4).join(', '))+(people.length>4?'…':'')+'</span>':''}</div></div><div class="row"><button class="btn ${local?'ok':'outline'}" onclick="${local?`resumeSession('${s.id}')`:`openSession('${s.id}')`}">${s.status==='closed'?'Xem':local?'▶ Tiếp tục trên máy':'Mở'}</button><button class="btn outline" onclick="exportSessionExcel('${s.id}')">Excel</button><button class="btn outline" onclick="openSessionPrint('${s.id}')">A4/Ảnh</button>${s.status==='closed'?`<button class="btn outline" onclick="reopenSession('${s.id}')">Mở lại</button>`:''}<button class="btn danger" onclick="deleteSession('${s.id}')">Xóa</button></div></div>`
+  }).join(''):'<div class="empty">Chưa có phiên.</div>';
+};
+
+compareSessionOptions=function(warehouseId){
+  return Object.values(state.sessions||{}).filter(s=>s.warehouseId===warehouseId&&s.warehouseId!==LEGACY_WH).map(s=>{normalizeLegacyPausedSession(s);return s}).sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)))
+};
+populateCompareSessions=function(){
+  const wh=document.getElementById('compareWarehouse')?.value||'',arr=compareSessionOptions(wh),a=document.getElementById('compareSessionA'),b=document.getElementById('compareSessionB');if(!a||!b)return;
+  const label=s=>`${s.status==='closed'?'✅':'🟢'} ${s.name} • ${fmtDate(s.updatedAt||s.createdAt)}`;
+  a.innerHTML=arr.map(s=>`<option value="${esc(s.id)}">${esc(label(s))}</option>`).join('');
+  b.innerHTML=arr.map(s=>`<option value="${esc(s.id)}">${esc(label(s))}</option>`).join('');
+  const cur=currentSession();if(cur?.warehouseId===wh&&arr.some(s=>s.id===cur.id))a.value=cur.id;else if(arr[0])a.value=arr[0].id;
+  const prev=arr.find(s=>s.id!==a.value&&s.status==='closed')||arr.find(s=>s.id!==a.value);if(prev)b.value=prev.id;
+  if(arr.length<2){document.getElementById('compareStatus').textContent='Cần ít nhất 2 phiên cùng kho để so sánh.';compareRowsCache=[];renderComparison();return}
+  loadComparison()
+};
+
+const _v69SessionMetaForCloud=sessionMetaForCloud;
+sessionMetaForCloud=function(s){
+  normalizeLegacyPausedSession(s);
+  const m=_v69SessionMetaForCloud(s);
+  m.status=s.status==='closed'?'closed':'active';
+  delete m.pausedAt;
+  return m
+};
+
+attachCloudSessionIndex=function(){
+  const r=cloudDb.ref(CLOUD_ROOT+'/sessionIndex');
+  const fn=async snap=>{
+    cloudPermitted=true;cloudIndexReady=true;
+    const remote=snap.val()||{},remoteIds=new Set(Object.keys(remote)),legacyToFix=[];
+    for(const [id,m] of Object.entries(remote)){
+      const old=state.sessions[id]||{id,counts:{},events:[]};
+      const next={...old,...m,id,counts:old.counts||{},events:old.events||[],cloudSynced:true};
+      if(normalizeLegacyPausedSession(next))legacyToFix.push(next);
+      state.sessions[id]=next
+    }
+    for(const [id,s] of Object.entries(state.sessions)){if(s.cloudSynced&&!remoteIds.has(id))delete state.sessions[id]}
+    const cur=currentSession();
+    if((!cur||(!remoteIds.has(cur.id)&&Object.keys(cur.counts||{}).length===0))&&remoteIds.size){
+      const arr=Object.values(state.sessions).filter(x=>x.cloudSynced).sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)));
+      const pick=arr.find(x=>x.status!=='closed')||arr[0];
+      if(pick){currentSessionId=pick.id;state.activeSessionId=pick.id}
+    }
+    saveState();renderAll();attachCloudActiveSession();
+    for(const s of legacyToFix){try{await cloudWriteSessionMeta(s)}catch{}}
+    if(!remoteIds.size&&currentSession())await cloudWriteSessionMeta(currentSession())
+  };
+  const er=e=>{console.error(e);cloudPermitted=false;cloudSetStatus('Firebase từ chối quyền','err')};
+  r.on('value',fn,er);cloudIndexDetach=()=>r.off('value',fn)
+};
+
+for(const s of Object.values(state.sessions||{}))normalizeLegacyPausedSession(s);
+saveState();
+renderAll();
+
+/* ===== v6.10 OPTIONAL SCOPE + EMPLOYEE CLOSE ===== */
+const _v610SessionMetaForCloud=sessionMetaForCloud;
+sessionMetaForCloud=function(s){
+  const m=_v610SessionMetaForCloud(s);
+  if(s?.closedBy)m.closedBy=s.closedBy;
+  return m
+};
+
+function closerLabel(s){
+  const a=s?.closedBy||{};
+  return [a.employeeId,a.name].filter(Boolean).join(' - ')||a.email||'';
+}
+
+closeCurrentSession=async function(){
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return;
+  const s=currentSession();
+  if(!s){toast('Chưa có phiên kiểm kê','err');return}
+  if(s.status==='closed'){toast('Phiên này đã chốt.','err');return}
+  const st=statsFor(s);
+  const who=profileComplete(cloudProfile)?employeeLabel(cloudProfile):(cloudUser?.email||'Nhân viên hiện tại');
+  const remaining=Number(st.unchecked||0);
+  const msg=remaining>0
+    ? `Còn <b>${remaining.toLocaleString('vi-VN')}</b> mã chưa kiểm.<br>Sau khi chốt, các mã chưa kiểm sẽ được tính là <b>0</b> trong báo cáo chênh lệch.<br><br>Người chốt: <b>${esc(who)}</b><br><br>Sau khi chốt, phiên sẽ khóa kiểm kê cho tất cả nhân viên.`
+    : `Tất cả mã trong phạm vi kho đã có kết quả kiểm kê.<br><br>Người chốt: <b>${esc(who)}</b><br><br>Sau khi chốt, phiên sẽ khóa kiểm kê cho tất cả nhân viên.`;
+  const ok=await askConfirm('Chốt phiên kiểm kê',msg,'✅ Chốt phiên');
+  if(!ok)return;
+  s.status='closed';
+  s.closedAt=nowIso();
+  s.closedBy=typeof cloudActor==='function'?cloudActor():{name:who,email:cloudUser?.email||''};
+  s.updatedAt=nowIso();
+  saveState();
+  if(cloudUser&&cloudPermitted){
+    try{await cloudWriteSessionMeta(s)}catch(e){console.error(e)}
+  }
+  try{if(scannerRunning)await stopScanner()}catch{}
+  renderAll();
+  toast('✅ Đã chốt phiên kiểm kê','ok')
+};
+
+const _v610RenderSessions=renderSessions;
+renderSessions=function(){
+  _v610RenderSessions();
+  const el=document.getElementById('sessionList');
+  if(!el)return;
+  for(const s of Object.values(state.sessions||{})){
+    if(s.status!=='closed'||!s.closedBy)continue;
+    const card=[...el.querySelectorAll('.session-card')].find(x=>x.innerText.includes(s.name));
+    if(!card)continue;
+    const meta=card.querySelector('.session-meta');
+    const label=closerLabel(s);
+    if(meta&&label&&!meta.innerText.includes('Chốt bởi')){
+      meta.insertAdjacentHTML('beforeend',`<span>• ✅ Chốt bởi ${esc(label)}${s.closedAt?' • '+fmtDate(s.closedAt):''}</span>`)
+    }
+  }
+};
+
+const _v610RenderWorkScope=renderWorkScope;
+renderWorkScope=function(){
+  const r=_v610RenderWorkScope();
+  const s=currentSession(),hint=document.getElementById('scopeHint');
+  if(s&&hint){
+    const sc=getWorkScope(s),total=sessionItems(s).length,filtered=scopedItems(s).length;
+    const scopeText=!sc.category&&!sc.group
+      ? '<b>Tất cả kho</b> (không cần chọn Ngành/Nhóm)'
+      : `<b>${sc.category?esc(sc.category):'Tất cả ngành'}</b>${sc.group?' → <b>'+esc(sc.group)+'</b>':''}`;
+    hint.innerHTML=`Phiên: <b>${esc(s.name)}</b> • Kho: <b>${esc(warehouseName(s.warehouseId))}</b> • Phạm vi trên máy này: ${scopeText} • ${filtered.toLocaleString('vi-VN')}/${total.toLocaleString('vi-VN')} mã`;
+  }
+  return r
+};
+/* ===== END v6.10 ===== */
+
+/* ===== v6.11 RECHECK + CONFLICT GUARD + CLOSE SAFETY ===== */
+const APP_VERSION='6.11';
+function applyAppVersion(){
+  const el=document.getElementById('appVersionLabel');
+  if(el)el.textContent=`Mobile Inventory Tool • v${APP_VERSION} Kiểm kê`;
+  document.title=`Kiểm kê C933 • v${APP_VERSION}`;
+}
+applyAppVersion();
+
+let countMetaByKey={};
+let quickQtyMode='normal';
+
+function actorLabel(a){
+  if(!a)return '';
+  const id=String(a.employeeId||'').trim(),name=String(a.name||'').trim();
+  return [id,name].filter(Boolean).join(' - ')||a.email||'Nhân viên';
+}
+function currentActorUid(){return String(cloudUser?.uid||'')}
+function itemKeyOf(item){return item?.itemKey||makeItemKey(item?.warehouseId,item?.code)}
+
+function latestItemTouch(item){
+  if(!item)return null;
+  const key=itemKeyOf(item),meta=countMetaByKey[key]||countMetaByKey[String(item.code)]||null;
+  if(meta?.updatedBy){
+    return {actor:meta.updatedBy,ts:Number(meta.updatedAt||0),qty:Number(meta.qty||0),source:'count-meta'}
+  }
+  const ev=(cloudEvents||[]).find(e=>(e.itemKey&&e.itemKey===key)||String(e.code||'')===String(item.code));
+  if(ev){
+    return {actor:{uid:ev.uid,employeeId:ev.employeeId,name:ev.name,email:ev.email},ts:Number(ev.ts||0),qty:Number(ev.qtyAfter??ev.qty??0),source:ev.source||'event'}
+  }
+  return null
+}
+function lastWorkerHtml(item){
+  const x=latestItemTouch(item);
+  if(!x)return '<div class="last-worker"><span>Chưa có thông tin</span></div>';
+  const when=x.ts?new Date(x.ts).toLocaleString('vi-VN',{hour12:false}):'';
+  return `<div class="last-worker"><b>👤 ${esc(actorLabel(x.actor))}</b>${when?`<span>${esc(when)}</span>`:''}</div>`
+}
+
+/* Keep qty metadata (updatedBy/updatedAt) from Firebase so UI and conflict checks know who touched a code last. */
+attachCloudActiveSession=function(){
+  try{cloudSessionDetach?.()}catch{}
+  cloudSessionDetach=null;cloudEvents=[];countMetaByKey={};
+  const s=currentSession();
+  if(!cloudDb||!cloudUser||!s){renderAuditLog();return}
+  void cloudEnsureCatalog(s.catalogVersion);
+  const countsRef=cloudDb.ref(CLOUD_ROOT+'/sessions/'+s.id+'/counts');
+  const eventsRef=cloudDb.ref(CLOUD_ROOT+'/sessions/'+s.id+'/events').limitToLast(1500);
+  const onCounts=snap=>{
+    const raw=snap.val()||{},target=currentSession();
+    if(!target||target.id!==s.id)return;
+    target.counts={};countMetaByKey={};
+    for(const [key,v] of Object.entries(raw)){
+      if(v&&typeof v==='object'){
+        target.counts[key]=Number(v.qty||0);
+        countMetaByKey[key]={qty:Number(v.qty||0),updatedAt:Number(v.updatedAt||0),updatedBy:v.updatedBy||null};
+      }else{
+        target.counts[key]=Number(v||0);
+      }
+    }
+    target.cloudCountsLoaded=true;target.updatedAt=nowIso();saveState();renderAll()
+  };
+  const onEvents=snap=>{
+    const raw=snap.val()||{};
+    cloudEvents=Object.entries(raw).map(([id,v])=>({id,...v})).sort((a,b)=>(b.ts||0)-(a.ts||0));
+    const target=currentSession();
+    if(target&&target.id===s.id){
+      target.events=cloudEvents.slice(0,300).map(e=>({
+        itemKey:e.itemKey,warehouseId:e.warehouseId,code:e.code,
+        at:e.at||new Date(e.ts||Date.now()).toISOString(),
+        source:e.source||'cloud',qty:e.qtyAfter??e.qty??0,
+        uid:e.uid||'',employeeId:e.employeeId||'',name:e.name||'',email:e.email||''
+      }));
+      saveState();renderRecent()
+    }
+    populateLogFilters();renderAuditLog();
+    if(document.getElementById('tab-diff')?.classList.contains('active'))renderDiff()
+  };
+  countsRef.on('value',onCounts,e=>{console.error(e);cloudPermitted=false;cloudSetStatus('Không có quyền đọc phiên','err')});
+  eventsRef.on('value',onEvents);
+  cloudSessionDetach=()=>{countsRef.off('value',onCounts);eventsRef.off('value',onEvents)}
+};
+
+function completionForClose(s){
+  const items=sessionItems(s).filter(x=>Number(itemSysQty(x)||0)>0);
+  const expected=items.length;
+  let counted=0,diff=0;
+  for(const item of items){
+    const v=getCount(s,itemKeyOf(item));
+    if(v===null)continue;
+    counted++;
+    if(Math.abs(Number(v)-Number(itemSysQty(item)))>1e-9)diff++
+  }
+  const pct=expected?counted/expected*100:100;
+  return {expected,counted,remaining:Math.max(0,expected-counted),diff,pct}
+}
+
+/* Employee may close, but the warning is proportional to completion and records who closed it. */
+closeCurrentSession=async function(){
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return;
+  const s=currentSession();
+  if(!s){toast('Chưa có phiên kiểm kê','err');return}
+  if(s.status==='closed'){toast('Phiên này đã chốt.','err');return}
+  const c=completionForClose(s);
+  const who=profileComplete(cloudProfile)?employeeLabel(cloudProfile):(cloudUser?.email||'Nhân viên hiện tại');
+  let title='Chốt phiên kiểm kê',button='✅ Chốt phiên',detail='';
+  if(c.pct<100){
+    title='⚠️ Chốt khi chưa kiểm đủ 100%';
+    button='Vẫn chốt phiên';
+    detail=`<div class="close-warning"><b>Mới hoàn thành ${c.pct.toFixed(1)}%</b><br>`+
+      `${c.counted.toLocaleString('vi-VN')} / ${c.expected.toLocaleString('vi-VN')} mã có tồn • `+
+      `còn <b>${c.remaining.toLocaleString('vi-VN')}</b> mã chưa kiểm.<br>`+
+      `Các mã chưa kiểm sẽ được tính là <b>0</b> khi xem kết quả phiên đã chốt.</div>`;
+  }else{
+    detail=`<div class="result-callout ok"><b>Đã kiểm 100% mã có tồn.</b>${c.diff?` Hiện còn <b>${c.diff}</b> mã chênh lệch.`:' Không còn mã chênh lệch.'}</div>`;
+  }
+  const ok=await askConfirm(
+    title,
+    `${detail}<br>Người chốt: <b>${esc(who)}</b><br><br>Sau khi chốt, phiên sẽ khóa kiểm kê cho tất cả nhân viên.`,
+    button
+  );
+  if(!ok)return;
+  s.status='closed';s.closedAt=nowIso();s.closedBy=cloudActor();s.updatedAt=nowIso();saveState();
+  if(cloudUser&&cloudPermitted){try{await cloudWriteSessionMeta(s)}catch(e){console.error(e)}}
+  try{if(scannerRunning)await stopScanner()}catch{}
+  renderAll();toast('✅ Đã chốt phiên kiểm kê','ok')
+};
+
+/* Difference table: show last worker + one-click independent recount. */
+renderDiff=function(){
+  const s=currentSession(),st=statsFor(s);
+  document.getElementById('kpiDiff').innerHTML=[
+    ['Khớp',st.eq,'ok'],['Thiếu',st.short,'danger'],['Dư',st.over,'warn'],['Chưa kiểm',st.unchecked,'']
+  ].map(x=>`<div class="card kpi ${x[2]}"><div class="n">${x[1]}</div><div class="t">${x[0]}</div></div>`).join('');
+  const all=getDiffRows(),pages=Math.max(1,Math.ceil(all.length/PAGE_SIZE));
+  diffPage=Math.min(Math.max(1,diffPage),pages);
+  const arr=all.slice((diffPage-1)*PAGE_SIZE,diffPage*PAGE_SIZE);
+  document.getElementById('diffTable').innerHTML=arr.length
+    ? `<table><thead><tr><th>Mã</th><th>Sản phẩm</th><th>Ngành / Nhóm</th><th>SL sổ</th><th>SL kiểm</th><th>Kết quả</th><th>Người kiểm cuối</th><th>Xác minh</th></tr></thead><tbody>`+
+      arr.map(r=>{
+        const canRecheck=s?.status!=='closed'&&r.v!==null&&r.d!==null&&Math.abs(r.d)>1e-9;
+        return `<tr><td class="code">${esc(r.item.code)}</td><td>${esc(r.item.name)}</td>`+
+          `<td>${esc(r.item.category)}<div class="tiny muted">${esc(r.item.group)}</div></td>`+
+          `<td><b>${nfmt(itemSysQty(r.item))}</b></td><td>${r.v===null?'—':'<b>'+nfmt(r.v)+'</b>'}</td>`+
+          `<td>${diffBadge(r.d)}</td><td>${lastWorkerHtml(r.item)}</td>`+
+          `<td>${canRecheck?`<button class="btn outline recheck-btn" onclick="openRecheck('${esc(itemKeyOf(r.item))}')">🔄 Kiểm lại</button>`:'—'}</td></tr>`
+      }).join('')+'</tbody></table>'
+    : '<div class="empty">Không có dữ liệu phù hợp.</div>';
+  document.getElementById('diffShown').textContent=`${warehouseName(s?.warehouseId)} • ${all.length.toLocaleString('vi-VN')} dòng`;
+  document.getElementById('diffPageLabel').textContent=`Trang ${diffPage}/${pages}`;
+  document.getElementById('diffPrev').disabled=diffPage<=1;document.getElementById('diffNext').disabled=diffPage>=pages;
+  renderResultInsights()
+};
+
+function openQuickQty(key){
+  const s=currentSession(),item=resolveItemArg(key,s);if(!s||!item)return;
+  if(!deviceCanCount())return;
+  quickQtyMode='normal';quickQtyKey=itemKeyOf(item);quickQtyItem=item;
+  const cur=getCount(s,quickQtyKey)??0,sys=itemSysQty(item);
+  const title=document.getElementById('quickQtyTitle');if(title)title.textContent='🔢 Nhập nhanh số lượng';
+  document.getElementById('quickQtyCode').textContent=item.code;
+  document.getElementById('quickQtyName').textContent=item.name;
+  document.getElementById('quickQtyMeta').textContent=(item.category||'')+' • '+(item.group||'')+' • '+(item.warehouseName||warehouseName(item.warehouseId));
+  document.getElementById('quickQtySystem').textContent=nfmt(sys);
+  document.getElementById('quickQtyCurrent').textContent=nfmt(cur);
+  const input=document.getElementById('quickQtyInput');input.value=cur||'';updateQuickQtyPreview();
+  input.oninput=updateQuickQtyPreview;openModal('quickQtyModal');setTimeout(()=>{input.focus();input.select()},120)
+}
+function openRecheck(key){
+  const s=currentSession(),item=resolveItemArg(key,s);if(!s||!item)return;
+  if(!deviceCanCount())return;
+  quickQtyMode='recheck';quickQtyKey=itemKeyOf(item);quickQtyItem=item;
+  const cur=getCount(s,quickQtyKey)??0,sys=itemSysQty(item),last=latestItemTouch(item);
+  const title=document.getElementById('quickQtyTitle');if(title)title.textContent='🔄 Kiểm lại chênh lệch';
+  document.getElementById('quickQtyCode').textContent=item.code;
+  document.getElementById('quickQtyName').textContent=item.name;
+  document.getElementById('quickQtyMeta').innerHTML=
+    `${esc(item.category||'')} • ${esc(item.group||'')}<br>`+
+    `Kết quả hiện tại: <b>${nfmt(cur)}</b>${last?` • Lần cuối: <b>${esc(actorLabel(last.actor))}</b>`:''}<br>`+
+    `<span style="color:#b45309">Hãy đếm lại độc lập rồi nhập tổng số lượng vừa xác minh.</span>`;
+  document.getElementById('quickQtySystem').textContent=nfmt(sys);
+  document.getElementById('quickQtyCurrent').textContent=nfmt(cur);
+  const input=document.getElementById('quickQtyInput');input.value='';updateQuickQtyPreview();
+  input.oninput=updateQuickQtyPreview;openModal('quickQtyModal');setTimeout(()=>input.focus(),120)
+}
+
+async function guardedManualSet(key,val,source='manual-total'){
+  if(!deviceCanCount())return null;
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return null;
+  const s=currentSession(),item=resolveItemArg(key,s);if(!s||!item)return null;
+  let v=Number(val);
+  if(!Number.isFinite(v)||v<0){toast('Số lượng không hợp lệ','err');return null}
+  v=Math.round(v*10000)/10000;
+  const itemKey=itemKeyOf(item),actor=cloudActor();
+  let before=getCount(s,itemKey)??0;
+
+  if(suspiciousManualQty(item,v)){
+    const sys=itemSysQty(item),d=v-sys;
+    const ok=await askConfirm('Xác nhận số lượng chênh lớn',
+      `Sản phẩm <b>${esc(item.name)}</b><br>Tồn sổ: <b>${nfmt(sys)}</b> • Bạn nhập: <b>${nfmt(v)}</b><br>`+
+      `Chênh lệch: <b>${d>0?'+':''}${nfmt(d)}</b><br><br>Xác nhận đây là số lượng thực tế đã đếm?`,
+      'Xác nhận lưu');
+    if(!ok){renderAll();return null}
+  }
+
+  if(cloudDb&&cloudUser&&cloudPermitted){
+    try{
+      await cloudWriteSessionMeta(s);
+      const ref=cloudDb.ref(CLOUD_ROOT+'/sessions/'+s.id+'/counts/'+itemKey);
+      const snap=await ref.once('value'),raw=snap.val();
+      const obj=raw&&typeof raw==='object'?raw:{qty:Number(raw||0),updatedAt:0,updatedBy:null};
+      before=Number(obj.qty||0);
+      const lastAt=Number(obj.updatedAt||0),lastActor=obj.updatedBy||null;
+      const otherUid=String(lastActor?.uid||''),recent=lastAt&&(Date.now()-lastAt)<30000;
+      if(recent&&otherUid&&otherUid!==currentActorUid()){
+        const seconds=Math.max(1,Math.round((Date.now()-lastAt)/1000));
+        const ok=await askConfirm(
+          '⚠️ Mã vừa được người khác cập nhật',
+          `<b>${esc(actorLabel(lastActor))}</b> vừa cập nhật mã này khoảng <b>${seconds} giây trước</b>.<br>`+
+          `Số hiện tại trên Cloud: <b>${nfmt(before)}</b> • Bạn chuẩn bị nhập: <b>${nfmt(v)}</b>.<br><br>`+
+          `Hãy chắc chắn bạn đã đếm lại trước khi ghi đè.`,
+          'Vẫn lưu số mới'
+        );
+        if(!ok){renderAll();return null}
+      }
+      const baselineTs=lastAt;
+      const result=await ref.transaction(cur=>{
+        const c=cur&&typeof cur==='object'?cur:{qty:Number(cur||0),updatedAt:0,updatedBy:null};
+        const curTs=Number(c.updatedAt||0),curUid=String(c.updatedBy?.uid||'');
+        if(baselineTs&&curTs&&curTs!==baselineTs&&curUid!==currentActorUid())return;
+        return {qty:v,updatedAt:Date.now(),updatedBy:actor}
+      });
+      if(!result.committed){
+        const latest=result.snapshot?.val()||{};
+        const latestQty=Number(latest&&typeof latest==='object'?latest.qty:latest||0);
+        s.counts[itemKey]=latestQty;saveState();renderAll();
+        toast('⚠ Mã vừa thay đổi trên máy khác. Đã tải số mới, vui lòng kiểm tra lại.','err');
+        return null
+      }
+      localSetKey(itemKey,v,source);
+      countMetaByKey[itemKey]={qty:v,updatedAt:Date.now(),updatedBy:actor};
+      await cloudRecordEvent(s,item,{
+        source,action:source==='recheck'?'recheck':'set',
+        delta:v-before,qtyBefore:before,qtyAfter:v
+      });
+      return v
+    }catch(e){
+      console.error(e);
+      toast('Không kiểm tra được xung đột Cloud • đang lưu tạm trên máy','err')
+    }
+  }
+
+  localSetKey(itemKey,v,source);
+  return v
+}
+
+requestManualQty=async function(key,val,source='manual-total'){
+  const item=resolveItemArg(key,currentSession());if(!item)return;
+  const q=await guardedManualSet(key,val,source);
+  if(q===null)return;
+  showRealtimeCountResult(item,q,source)
+};
+
+confirmQuickQty=async function(){
+  const input=document.getElementById('quickQtyInput'),item=quickQtyItem,key=quickQtyKey;
+  if(!item||!key)return;
+  if(input.value===''){toast(quickQtyMode==='recheck'?'Nhập số lượng vừa kiểm lại':'Nhập số lượng hợp lệ','err');return}
+  const v=Number(input.value);
+  if(!Number.isFinite(v)||v<0){toast('Nhập số lượng hợp lệ','err');return}
+  const mode=quickQtyMode;
+  closeModal('quickQtyModal');
+  const q=await guardedManualSet(key,v,mode==='recheck'?'recheck':'manual-quick');
+  if(q!==null){
+    showRealtimeCountResult(item,q,mode==='recheck'?'recheck':'manual-quick');
+    if(mode==='recheck')toast('🔄 Đã lưu kết quả kiểm lại vào Nhật ký','ok')
+  }
+  quickQtyItem=null;quickQtyKey='';quickQtyMode='normal'
+};
+
+renderAuditLog=function(){
+  const el=document.getElementById('auditTable');if(!el)return;
+  const arr=filteredAudit(),s=currentSession();
+  document.getElementById('logSummary').textContent=(s?warehouseName(s.warehouseId)+' • '+s.name+' • ':'')+arr.length.toLocaleString('vi-VN')+' thao tác hiển thị';
+  if(!arr.length){el.innerHTML='<div class="empty">Chưa có nhật ký đồng bộ cho phiên này.</div>';return}
+  const actionHtml=e=>{
+    if(e.action==='recheck'||e.source==='recheck')return `<span class="badge b-warn">🔄 Kiểm lại</span>`;
+    if(e.action==='add')return `<span class="badge b-ok">+${nfmt(e.delta||1)}</span>`;
+    if(e.action==='subtract')return `<span class="badge b-danger">${nfmt(e.delta||-1)}</span>`;
+    return `<span class="badge b-blue">Sửa ${nfmt(e.delta||0)}</span>`
+  };
+  el.innerHTML=`<table><thead><tr><th>Thời gian</th><th>Nhân viên</th><th>Kho</th><th>Mã SP</th><th>Sản phẩm</th><th>Nhóm hàng</th><th>Thao tác</th><th>SL sau</th></tr></thead><tbody>`+
+    arr.slice(0,1500).map(e=>`<tr><td>${new Date(e.ts||e.at).toLocaleString('vi-VN',{hour12:false})}</td>`+
+      `<td><span class="worker-chip">👤 ${esc(eventWorkerLabel(e))}</span><div class="tiny muted">${esc(e.email||'')}</div></td>`+
+      `<td><b>${esc(e.warehouseName||warehouseName(e.warehouseId))}</b></td><td class="code">${esc(e.code||'')}</td>`+
+      `<td>${esc(e.productName||'')}</td><td>${esc(e.group||e.category||'')}</td>`+
+      `<td>${actionHtml(e)}<div class="tiny muted">${esc(e.source||'')}</div></td><td><b>${nfmt(e.qtyAfter)}</b></td></tr>`).join('')+
+    `</tbody></table>`
+};
+/* ===== END v6.11 ===== */
+
+
+/* ===== END v6.9 ===== */
+
+/* ===== END v6.7 ===== */
+
+/* ===== END v6.6 ===== */
+
+/* ===== END v6.5 ===== */
+
+/* ===== END v6 ===== */
+
+</script>
+
+</body>
+</html>
