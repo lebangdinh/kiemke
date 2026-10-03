@@ -91,7 +91,7 @@
 <body>
   <header class="topbar">
     <div class="topinner">
-      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v6.1 Nhân viên</small></div>
+      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v6.2 Nhân viên</small></div>
       <div class="session-pill"><b id="topSession">Chưa có phiên</b><span id="topStatus">—</span></div>
       <div class="cloudbox no-print"><span id="cloudDot" class="cloud-dot"></span><span id="cloudStatus" class="cloudtext">Chưa kết nối</span><button id="cloudAuthBtn" class="cloudbtn" onclick="cloudAuthAction()">🔑 Đăng nhập</button></div>
     </div>
@@ -662,25 +662,16 @@ renderAll();
 <script>
 /* ===== C933 CLOUD SYNC v2 - Firebase Realtime Database ===== */
 const CLOUD_ROOT = 'inventoryC933/v2';
-let FIREBASE_CONFIG_C933 = null;
-async function loadFirebaseConfigC933(){
-  if(FIREBASE_CONFIG_C933) return FIREBASE_CONFIG_C933;
-  const urls=[
-    'https://raw.githubusercontent.com/lebangdinh/baocaodmx/main/index.html',
-    'https://lebangdinh.github.io/baocaodmx/'
-  ];
-  let text='';
-  for(const u of urls){try{const r=await fetch(u,{cache:'no-store'});if(r.ok){text=await r.text();if(text)break}}catch{}}
-  if(!text) throw new Error('Không tải được cấu hình Firebase C933');
-  const fields=['apiKey','authDomain','databaseURL','projectId','storageBucket','messagingSenderId','appId'];
-  const cfg={};
-  for(const k of fields){
-    const re=new RegExp(k+"\\\\s*:\\s*['\"]([^'\"]+)['\"]");
-    const m=text.match(re); if(m) cfg[k]=m[1];
-  }
-  if(!cfg.apiKey||!cfg.databaseURL||!cfg.projectId) throw new Error('Không tìm thấy cấu hình Firebase C933');
-  FIREBASE_CONFIG_C933=cfg; return cfg;
-}
+const FIREBASE_CONFIG_C933 = {
+  apiKey: 'AIzaSyBpYqlkhjFI8wU4kan9nYjgKfw9C77Js2Q',
+  authDomain: 'suc-khoe-cum-933.firebaseapp.com',
+  databaseURL: 'https://suc-khoe-cum-933-default-rtdb.asia-southeast1.firebasedatabase.app',
+  projectId: 'suc-khoe-cum-933',
+  storageBucket: 'suc-khoe-cum-933.firebasestorage.app',
+  messagingSenderId: '1038827611970',
+  appId: '1:1038827611970:web:059c46f85d6d327de34adb'
+};
+async function loadFirebaseConfigC933(){ return FIREBASE_CONFIG_C933; }
 let cloudApp=null, cloudAuth=null, cloudDb=null, cloudUser=null, cloudConnected=false, cloudPermitted=false;
 let cloudSessionDetach=null, cloudIndexDetach=null, cloudCatalogDetach=null, cloudConnDetach=null;
 let cloudEvents=[], cloudProfile=null, cloudIndexReady=false, cloudCatalogVersion='';
