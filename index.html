@@ -91,7 +91,7 @@
 <body>
   <header class="topbar">
     <div class="topinner">
-      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v6 Nhân viên</small></div>
+      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v6.1 Nhân viên</small></div>
       <div class="session-pill"><b id="topSession">Chưa có phiên</b><span id="topStatus">—</span></div>
       <div class="cloudbox no-print"><span id="cloudDot" class="cloud-dot"></span><span id="cloudStatus" class="cloudtext">Chưa kết nối</span><button id="cloudAuthBtn" class="cloudbtn" onclick="cloudAuthAction()">🔑 Đăng nhập</button></div>
     </div>
@@ -686,34 +686,65 @@ let cloudSessionDetach=null, cloudIndexDetach=null, cloudCatalogDetach=null, clo
 let cloudEvents=[], cloudProfile=null, cloudIndexReady=false, cloudCatalogVersion='';
 const DEVICE_ID_KEY='kiemKeC933_deviceId_v1';
 function deviceId(){let x=localStorage.getItem(DEVICE_ID_KEY);if(!x){x='dev_'+Math.random().toString(36).slice(2,8)+'_'+Date.now().toString(36);localStorage.setItem(DEVICE_ID_KEY,x)}return x}
-function loadRemoteScript(src){return new Promise((resolve,reject)=>{if([...document.scripts].some(x=>x.src===src))return resolve();const sc=document.createElement('script');sc.src=src;sc.async=true;sc.onload=resolve;sc.onerror=reject;document.head.appendChild(sc)})}
+function waitUntilReady(test,timeout=15000){return new Promise((resolve,reject)=>{const started=Date.now();const tick=()=>{try{if(test())return resolve(true)}catch{}if(Date.now()-started>=timeout)return reject(new Error('Tải thư viện quá thời gian'));setTimeout(tick,50)};tick()})}
+function loadRemoteScript(src,readyTest){
+  if(readyTest&&readyTest())return Promise.resolve();
+  const existing=[...document.scripts].find(x=>x.src===src);
+  if(!existing){const sc=document.createElement('script');sc.src=src;sc.async=true;document.head.appendChild(sc)}
+  return readyTest?waitUntilReady(readyTest):new Promise((resolve,reject)=>{const sc=[...document.scripts].find(x=>x.src===src);if(!sc)return reject(new Error('Không tạo được script'));if(sc.dataset.loaded==='1')return resolve();sc.addEventListener('load',()=>{sc.dataset.loaded='1';resolve()},{once:true});sc.addEventListener('error',()=>reject(new Error('Không tải được '+src)),{once:true})})
+}
 function cloudSetStatus(text,kind=''){const e=document.getElementById('cloudStatus'),d=document.getElementById('cloudDot');if(e)e.textContent=text;if(d)d.className='cloud-dot '+kind;const b=document.getElementById('managerCloudBadge');if(b){b.textContent=text;b.className='badge '+(kind==='ok'?'b-ok':kind==='err'?'b-danger':'b-neutral')}renderCloudBanner()}
 function renderCloudBanner(){const el=document.getElementById('cloudBanner');if(!el)return;if(cloudUser&&cloudConnected&&cloudPermitted){el.className='sync-banner no-print';el.innerHTML='<div class="txt"><b>☁️ Đang đồng bộ realtime</b><span>'+esc(cloudProfileName())+' • Mọi lượt kiểm sẽ lưu lên Cloud.</span></div><button class="btn outline" onclick="openProfile()">Đổi tên</button>';return}if(cloudUser&&!cloudPermitted){el.className='sync-banner err no-print';el.innerHTML='<div class="txt"><b>⚠️ Tài khoản chưa có quyền Firebase</b><span>Đã đăng nhập nhưng database đang từ chối đọc/ghi. Tool vẫn lưu tạm trên máy.</span></div><button class="btn outline" onclick="cloudRefreshEverything()">Thử lại</button>';return}el.className='sync-banner off no-print';el.innerHTML='<div class="txt"><b>☁️ Đồng bộ chưa hoạt động</b><span>Đăng nhập Google để các điện thoại dùng chung data và phiên kiểm kê.</span></div><button class="btn primary" onclick="cloudSignIn()">Đăng nhập</button>'}
 function cloudProfileName(){return (cloudProfile&&cloudProfile.name)||cloudUser?.displayName||cloudUser?.email||'Nhân viên'}
 function cloudActor(){return {uid:cloudUser?.uid||'',name:cloudProfileName(),email:cloudUser?.email||'',deviceId:deviceId()}}
 function cloudAuthAction(){if(cloudUser)openProfile();else cloudSignIn()}
+let cloudInitPromise=null,cloudAuthListenerBound=false;
 async function initCloud(){
-  try{
+  if(cloudAuth&&cloudDb)return true;
+  if(cloudInitPromise)return cloudInitPromise;
+  cloudInitPromise=(async()=>{
     cloudSetStatus('Đang tải Firebase…','warn');
     const base='https://www.gstatic.com/firebasejs/12.2.1/';
-    if(!window.firebase)await loadRemoteScript(base+'firebase-app-compat.js');
-    await Promise.all([!window.firebase.auth&&loadRemoteScript(base+'firebase-auth-compat.js'),!window.firebase.database&&loadRemoteScript(base+'firebase-database-compat.js')].filter(Boolean));
+    await loadRemoteScript(base+'firebase-app-compat.js',()=>!!window.firebase);
+    await Promise.all([
+      loadRemoteScript(base+'firebase-auth-compat.js',()=>!!(window.firebase&&window.firebase.auth)),
+      loadRemoteScript(base+'firebase-database-compat.js',()=>!!(window.firebase&&window.firebase.database))
+    ]);
+    await waitUntilReady(()=>window.firebase&&window.firebase.auth&&window.firebase.database,15000);
     const cloudCfg=await loadFirebaseConfigC933();
     cloudApp=window.firebase.apps.find(a=>a.name==='inventory-c933-sync')||window.firebase.initializeApp(cloudCfg,'inventory-c933-sync');
     cloudAuth=cloudApp.auth();cloudDb=cloudApp.database();
-    cloudAuth.onAuthStateChanged(async u=>{
-      cloudUser=u||null;cloudPermitted=false;cloudConnected=false;cloudProfile=null;cloudEvents=[];
-      const btn=document.getElementById('cloudAuthBtn');if(btn)btn.textContent=u?'👤 '+(u.displayName||u.email||'Đã đăng nhập'):'🔑 Đăng nhập';
-      detachCloudListeners();
-      if(!u){cloudSetStatus('Chưa đăng nhập','');renderAuditLog();return}
-      cloudSetStatus('Đang kết nối…','warn');
-      await cloudLoadProfile();
-      attachCloudConnection();attachCloudCatalogVersion();attachCloudSessionIndex();
-    });
-  }catch(e){console.error(e);cloudSetStatus('Không tải được Firebase','err')}
+    if(!cloudAuth||!cloudDb)throw new Error('Firebase Auth/Database chưa sẵn sàng');
+    if(!cloudAuthListenerBound){
+      cloudAuthListenerBound=true;
+      cloudAuth.onAuthStateChanged(async u=>{
+        cloudUser=u||null;cloudPermitted=false;cloudConnected=false;cloudProfile=null;cloudEvents=[];
+        const btn=document.getElementById('cloudAuthBtn');if(btn)btn.textContent=u?'👤 '+(u.displayName||u.email||'Đã đăng nhập'):'🔑 Đăng nhập';
+        detachCloudListeners();
+        if(!u){cloudSetStatus('Chưa đăng nhập','');renderAuditLog();renderIdentityStrip?.();return}
+        cloudSetStatus('Đang kết nối…','warn');
+        await cloudLoadProfile();
+        attachCloudConnection();attachCloudCatalogVersion();attachCloudSessionIndex();
+      });
+    }
+    return true;
+  })().catch(e=>{console.error(e);cloudSetStatus('Không tải được Firebase','err');cloudAuth=null;cloudDb=null;throw e}).finally(()=>{if(!cloudAuth)cloudInitPromise=null});
+  return cloudInitPromise;
 }
 async function cloudSignIn(){
-  try{if(!cloudAuth)await initCloud();const provider=new window.firebase.auth.GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account'});await cloudAuth.signInWithPopup(provider)}catch(e){console.error(e);toast(String(e?.code||e?.message||'Đăng nhập thất bại'),'err')}
+  try{
+    const btn=document.getElementById('cloudAuthBtn');if(btn){btn.disabled=true;btn.textContent='⏳ Đang mở Google…'}
+    await initCloud();
+    if(!cloudAuth||!window.firebase?.auth)throw new Error('Firebase Auth chưa sẵn sàng. Vui lòng thử lại.');
+    const provider=new window.firebase.auth.GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account'});
+    try{await cloudAuth.signInWithPopup(provider)}catch(e){
+      const code=String(e?.code||'');
+      if(code.includes('popup-blocked')){toast('Trình duyệt đang chặn cửa sổ đăng nhập. Hãy cho phép popup rồi thử lại.','err');return}
+      if(code.includes('unauthorized-domain')){toast('Tên miền GitHub Pages chưa được cho phép trong Firebase Authentication.','err');return}
+      throw e;
+    }
+  }catch(e){console.error(e);toast(String(e?.code||e?.message||'Đăng nhập thất bại'),'err')}
+  finally{const btn=document.getElementById('cloudAuthBtn');if(btn){btn.disabled=false;btn.textContent=cloudUser?(profileComplete?.(cloudProfile)?'👤 '+employeeLabel(cloudProfile):'👤 Khai báo NV'):'🔑 Đăng nhập'}}
 }
 async function cloudSignOut(){try{await cloudAuth?.signOut();toast('Đã đăng xuất Cloud')}catch(e){toast('Không đăng xuất được','err')}}
 function detachCloudListeners(){try{cloudIndexDetach?.();cloudCatalogDetach?.();cloudConnDetach?.();cloudSessionDetach?.()}catch{}cloudIndexDetach=cloudCatalogDetach=cloudConnDetach=cloudSessionDetach=null}
