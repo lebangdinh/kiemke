@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="vi">
 <head>
@@ -165,7 +166,7 @@
 <body>
   <header class="topbar">
     <div class="topinner">
-      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v6.8 Realtime</small></div>
+      <div class="brand">📦 KIỂM KÊ C933<small>Mobile Inventory Tool • v6.9 Phiên chung</small></div>
       <div class="session-pill"><b id="topSession">Chưa có phiên</b><span id="topStatus">—</span></div>
       <div class="cloudbox no-print"><span id="cloudDot" class="cloud-dot"></span><span id="cloudStatus" class="cloudtext">Chưa kết nối</span><button id="cloudAuthBtn" class="cloudbtn" onclick="cloudAuthAction()">🔑 Đăng nhập</button></div>
     </div>
@@ -206,7 +207,7 @@
           <div style="min-width:220px;flex:1"><b>Tiến độ mã có tồn</b><div class="progress" style="margin-top:7px"><span id="progressBar"></span></div></div>
           <div id="progressText" class="small muted">0 / 0</div>
           <div class="session-actions desktop-session-controls">
-            <button id="pauseSessionBtn" class="btn outline" onclick="pauseCurrentSession()">💾 Tạm dừng</button>
+            <button id="pauseSessionBtn" class="btn outline" onclick="pauseCurrentSession()">⏸ Dừng trên máy này</button>
             <button id="closeSessionBtn" class="btn ok" onclick="closeCurrentSession()">✅ Chốt phiên</button>
             <button class="btn dark" onclick="switchWarehouseFlow()">🏬 Đổi kho</button>
           </div>
@@ -399,7 +400,7 @@
   </main>
 
   <div class="mobile-session-bar no-print">
-    <button id="mobilePauseBtn" class="btn outline" onclick="pauseCurrentSession()">💾 Tạm dừng</button>
+    <button id="mobilePauseBtn" class="btn outline" onclick="pauseCurrentSession()">⏸ Dừng máy này</button>
     <button id="mobileCloseBtn" class="btn ok" onclick="closeCurrentSession()">✅ Chốt</button>
     <button class="btn dark" onclick="switchWarehouseFlow()">🏬 Đổi kho</button>
   </div>
@@ -1746,11 +1747,11 @@ confirmSwitchWarehouse=async function(){
     const ok=await askConfirm('Tiếp tục phiên kiểm kê chung',`Phiên <b>${esc(p.name)}</b> do <b>${esc(creator)}</b> tạo đang tạm dừng.<br><br><b>${esc(me)}</b> sẽ tiếp tục trên cùng số liệu. Mọi lượt bắn tiếp theo được ghi riêng theo người kiểm.<br><br>Tiếp tục?`,'Tiếp tục phiên');
     if(!ok)return;closeModal('warehouseSwitchModal');await resumeSession(p.id);return
   }
-  closeModal('warehouseSwitchModal');createWarehouseSession(id)
+  markPreviousDeviceStopped();closeModal('warehouseSwitchModal');createWarehouseSession(id)
 };
 function forceNewWarehouseSession(){
   const id=document.getElementById('switchWarehouseSelect')?.value||'';if(!id)return;
-  closeModal('warehouseSwitchModal');createWarehouseSession(id)
+  markPreviousDeviceStopped();closeModal('warehouseSwitchModal');createWarehouseSession(id)
 }
 
 function showOutOfScopeScan(item,code){
@@ -2057,6 +2058,277 @@ const _v67RenderProductSearch=renderProductSearch;
 renderProductSearch=function(){_v67RenderProductSearch()};
 const _v67RenderRecent=renderRecent;
 renderRecent=function(){_v67RenderRecent()};
+
+/* ===== v6.9 SHARED SESSION / DEVICE-ONLY PAUSE ===== */
+const DEVICE_PAUSE_KEY='kiemKeC933_device_pause_v1';
+
+function readDevicePaused(){
+  try{
+    const v=JSON.parse(localStorage.getItem(DEVICE_PAUSE_KEY)||'{}');
+    return v&&typeof v==='object'&&!Array.isArray(v)?v:{}
+  }catch{return {}}
+}
+function writeDevicePaused(v){try{localStorage.setItem(DEVICE_PAUSE_KEY,JSON.stringify(v||{}))}catch{}}
+function isDevicePaused(id=currentSessionId){if(!id)return false;return !!readDevicePaused()[id]}
+function setDevicePaused(id,paused){
+  if(!id)return;
+  const m=readDevicePaused();
+  if(paused)m[id]={at:Date.now(),uid:cloudUser?.uid||'',employeeId:cloudProfile?.employeeId||''};
+  else delete m[id];
+  writeDevicePaused(m)
+}
+function normalizeLegacyPausedSession(s){
+  if(!s)return false;
+  if(s.status==='paused'){
+    s.status='active';s.pausedAt=null;s.updatedAt=s.updatedAt||nowIso();
+    return true
+  }
+  return false
+}
+async function syncLegacyPauseMigration(s){
+  if(!s||!normalizeLegacyPausedSession(s))return false;
+  saveState();
+  if(cloudUser&&cloudPermitted){try{await cloudWriteSessionMeta(s)}catch{}}
+  return true
+}
+function latestOpenSessionForWarehouse(id){
+  const arr=Object.values(state.sessions||{})
+    .filter(s=>s.warehouseId===id&&s.status!=='closed')
+    .sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)));
+  for(const s of arr)normalizeLegacyPausedSession(s);
+  return arr[0]||null
+}
+latestPausedForWarehouse=latestOpenSessionForWarehouse;
+
+sessionStatusText=function(s){
+  if(!s)return 'Chưa có phiên';
+  if(s.status==='closed')return 'Đã chốt';
+  return 'Phiên chung đang kiểm'
+};
+
+const _v69RenderTop=renderTop;
+renderTop=function(){
+  _v69RenderTop();
+  const s=currentSession(),e=document.getElementById('topStatus');
+  if(e&&s){
+    const local=s.status!=='closed'&&isDevicePaused(s.id)?' • Máy này đang dừng':'';
+    e.textContent=sessionStatusText(s)+local+' • '+fmtDate(s.updatedAt)
+  }
+};
+
+pauseCurrentSession=async function(silent=false){
+  const s=currentSession();
+  if(!s){toast('Chưa có phiên kiểm kê','err');return false}
+  await syncLegacyPauseMigration(s);
+  if(s.status==='closed'){toast('Phiên đã chốt.','err');return false}
+  if(isDevicePaused(s.id)){
+    setDevicePaused(s.id,false);
+    currentSessionId=s.id;state.activeSessionId=s.id;saveState();
+    if(typeof attachCloudActiveSession==='function')attachCloudActiveSession();
+    renderAll();switchTab('count');
+    if(!silent)toast('▶ Đã tiếp tục kiểm trên máy này','ok');
+    return true
+  }
+  try{if(scannerRunning)await stopScanner()}catch{}
+  setDevicePaused(s.id,true);
+  renderAll();
+  if(!silent)toast('⏸ Đã dừng trên máy này • phiên chung vẫn hoạt động','ok');
+  return true
+};
+
+resumeSession=async function(id){
+  const s=state.sessions[id];if(!s)return;
+  await syncLegacyPauseMigration(s);
+  if(s.status==='closed'){toast('Phiên đã chốt. Quản Lý cần mở lại nếu muốn sửa.','err');return}
+  setDevicePaused(id,false);
+  currentSessionId=id;state.activeSessionId=id;saveState();
+  if(typeof attachCloudActiveSession==='function')attachCloudActiveSession();
+  renderAll();switchTab('count');toast('▶ Đã vào phiên chung '+warehouseName(s.warehouseId),'ok')
+};
+
+const _v69OpenSession=openSession;
+openSession=function(id){
+  const s=state.sessions[id];if(!s)return;
+  normalizeLegacyPausedSession(s);
+  if(s.status!=='closed')setDevicePaused(id,false);
+  _v69OpenSession(id);
+  if(typeof attachCloudActiveSession==='function')attachCloudActiveSession()
+};
+
+let pendingSwitchFromSessionId=null;
+switchWarehouseFlow=async function(){
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return;
+  const s=currentSession();pendingSwitchFromSessionId=s?.id||null;
+  try{if(scannerRunning)await stopScanner()}catch{}
+  const ws=validWarehouses();
+  if(!ws.length){toast('Chưa có dữ liệu kho. Quản Lý cần nhập file tồn tổng hợp.','err');return}
+  const sel=document.getElementById('switchWarehouseSelect'),currentId=s?.warehouseId||'';
+  sel.innerHTML=ws.map(w=>`<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('');
+  const other=ws.find(w=>w.id!==currentId)||ws[0];sel.value=other.id;
+  updateWarehouseSwitchInfo();openModal('warehouseSwitchModal')
+};
+function markPreviousDeviceStopped(){
+  const old=pendingSwitchFromSessionId?state.sessions[pendingSwitchFromSessionId]:null;
+  if(old&&old.status!=='closed')setDevicePaused(old.id,true);
+  pendingSwitchFromSessionId=null
+}
+
+updateWarehouseSwitchInfo=function(){
+  const id=document.getElementById('switchWarehouseSelect')?.value||'',
+        box=document.getElementById('switchWarehouseInfo'),
+        btn=document.getElementById('switchWarehouseOk'),
+        newBtn=document.getElementById('switchWarehouseNewBtn');
+  const p=latestOpenSessionForWarehouse(id);
+  if(p){
+    const people=sessionParticipantLabels(p),creator=sessionCreatorLabel(p);
+    box.innerHTML=`<b>Có phiên chung đang hoạt động:</b> ${esc(p.name)}<br>`+
+      `👤 Người tạo: <b>${esc(creator)}</b>`+
+      `${people.length?`<br>👥 Đã tham gia: ${esc(people.join(', '))}`:''}`+
+      `<br>🕒 Hoạt động cuối: ${fmtDate(p.updatedAt||p.createdAt)}`+
+      `<br>📊 ${esc(sessionProgressText(p))}`+
+      `<br><br><b>Tiếp tục phiên chung</b> để kiểm nối tiếp. Lượt kiểm mới vẫn ghi riêng theo Mã NV.`;
+    btn.textContent='▶ Tiếp tục phiên chung';newBtn?.classList.remove('hide')
+  }else{
+    box.innerHTML=`Không có phiên đang mở của <b>${esc(warehouseName(id))}</b>.<br>Sẽ tạo <b>phiên kiểm kê mới</b>.`;
+    btn.textContent='🏬 Bắt đầu kho này';newBtn?.classList.add('hide')
+  }
+};
+
+confirmSwitchWarehouse=async function(){
+  const id=document.getElementById('switchWarehouseSelect')?.value||'';if(!id)return;
+  const p=latestOpenSessionForWarehouse(id);
+  if(p){
+    const me=(typeof employeeLabel==='function'&&cloudProfile)?employeeLabel(cloudProfile):'nhân viên hiện tại';
+    const creator=sessionCreatorLabel(p);
+    const ok=await askConfirm(
+      'Tiếp tục phiên kiểm kê chung',
+      `Phiên <b>${esc(p.name)}</b> do <b>${esc(creator)}</b> tạo đang hoạt động.<br><br>`+
+      `<b>${esc(me)}</b> sẽ tiếp tục trên cùng kết quả kiểm kê. Mọi lượt bắn vẫn ghi riêng theo người kiểm.<br><br>Tiếp tục?`,
+      'Tiếp tục phiên'
+    );
+    if(!ok)return;
+    markPreviousDeviceStopped();closeModal('warehouseSwitchModal');await resumeSession(p.id);return
+  }
+  closeModal('warehouseSwitchModal');createWarehouseSession(id)
+};
+
+renderSessionControls=function(){
+  const s=currentSession(),closed=s?.status==='closed',localPaused=s&&!closed&&isDevicePaused(s.id);
+  for(const id of ['pauseSessionBtn','mobilePauseBtn']){
+    const b=document.getElementById(id);if(!b)continue;
+    b.disabled=!s||closed;
+    b.textContent=localPaused?(id==='mobilePauseBtn'?'▶ Tiếp tục':'▶ Tiếp tục trên máy này'):(id==='mobilePauseBtn'?'⏸ Dừng máy này':'⏸ Dừng trên máy này')
+  }
+  for(const id of ['closeSessionBtn','mobileCloseBtn']){
+    const b=document.getElementById(id);if(b)b.disabled=!s||closed
+  }
+};
+
+function deviceCanCount(){
+  const s=currentSession();
+  if(!s){toast('Chưa có phiên kiểm kê','err');return false}
+  normalizeLegacyPausedSession(s);
+  if(s.status==='closed'){toast('Phiên đã chốt.','err');return false}
+  if(isDevicePaused(s.id)){toast('Máy này đang dừng kiểm. Bấm ▶ Tiếp tục trên máy này.','err');return false}
+  return true
+}
+
+const _v69SetCount=setCount;
+setCount=function(...args){if(!deviceCanCount())return;return _v69SetCount(...args)};
+
+const _v69AddCount=addCount;
+addCount=function(...args){if(!deviceCanCount())return;return _v69AddCount(...args)};
+
+const _v69AuthoritativeAdd=v67AuthoritativeAdd;
+v67AuthoritativeAdd=async function(...args){if(!deviceCanCount())return null;return _v69AuthoritativeAdd(...args)};
+
+const _v69ProcessScan=processScan;
+processScan=async function(...args){if(!deviceCanCount())return;return _v69ProcessScan(...args)};
+
+const _v69StartScanner=startScanner;
+startScanner=async function(){
+  if(!deviceCanCount())return;
+  return _v69StartScanner()
+};
+
+const _v69OpenQuickQty=openQuickQty;
+openQuickQty=function(...args){if(!deviceCanCount())return;return _v69OpenQuickQty(...args)};
+
+const _v69RequestManualQty=requestManualQty;
+requestManualQty=async function(...args){if(!deviceCanCount())return;return _v69RequestManualQty(...args)};
+
+const _v69CloseCurrentSession=closeCurrentSession;
+closeCurrentSession=async function(){
+  if(!isManager()){await managerPrompt();if(!isManager())return}
+  return _v69CloseCurrentSession()
+};
+
+renderSessions=function(){
+  const el=document.getElementById('sessionList');if(!el)return;
+  const arr=Object.values(state.sessions||{}).filter(s=>s.warehouseId&&s.warehouseId!==LEGACY_WH).sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)));
+  for(const s of arr)normalizeLegacyPausedSession(s);
+  el.innerHTML=arr.length?arr.map(s=>{
+    const active=s.id===currentSessionId,people=Object.values(s.participants||{}).map(x=>(x.employeeId?x.employeeId+' - ':'')+(x.name||x.email||'')).filter(Boolean);
+    const local=active&&s.status!=='closed'&&isDevicePaused(s.id);
+    const status=s.status==='closed'?'<span class="badge b-neutral">Đã chốt</span>':'<span class="badge b-ok">Đang kiểm</span>';
+    return `<div class="session-card ${active?'active-s':''}"><div><div class="row"><b>${esc(s.name)}</b><span class="badge b-blue">🏬 ${esc(warehouseName(s.warehouseId))}</span>${active?'<span class="badge b-blue">Đang mở</span>':''}${local?'<span class="badge status-paused">Máy này đang dừng</span>':''}${status}</div><div class="session-meta"><span>${fmtDate(s.createdAt)}</span>${s.note?'<span>• '+esc(s.note)+'</span>':''}${people.length?'<span>• 👤 '+esc(people.slice(0,4).join(', '))+(people.length>4?'…':'')+'</span>':''}</div></div><div class="row"><button class="btn ${local?'ok':'outline'}" onclick="${local?`resumeSession('${s.id}')`:`openSession('${s.id}')`}">${s.status==='closed'?'Xem':local?'▶ Tiếp tục trên máy':'Mở'}</button><button class="btn outline" onclick="exportSessionExcel('${s.id}')">Excel</button><button class="btn outline" onclick="openSessionPrint('${s.id}')">A4/Ảnh</button>${s.status==='closed'?`<button class="btn outline" onclick="reopenSession('${s.id}')">Mở lại</button>`:''}<button class="btn danger" onclick="deleteSession('${s.id}')">Xóa</button></div></div>`
+  }).join(''):'<div class="empty">Chưa có phiên.</div>';
+};
+
+compareSessionOptions=function(warehouseId){
+  return Object.values(state.sessions||{}).filter(s=>s.warehouseId===warehouseId&&s.warehouseId!==LEGACY_WH).map(s=>{normalizeLegacyPausedSession(s);return s}).sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)))
+};
+populateCompareSessions=function(){
+  const wh=document.getElementById('compareWarehouse')?.value||'',arr=compareSessionOptions(wh),a=document.getElementById('compareSessionA'),b=document.getElementById('compareSessionB');if(!a||!b)return;
+  const label=s=>`${s.status==='closed'?'✅':'🟢'} ${s.name} • ${fmtDate(s.updatedAt||s.createdAt)}`;
+  a.innerHTML=arr.map(s=>`<option value="${esc(s.id)}">${esc(label(s))}</option>`).join('');
+  b.innerHTML=arr.map(s=>`<option value="${esc(s.id)}">${esc(label(s))}</option>`).join('');
+  const cur=currentSession();if(cur?.warehouseId===wh&&arr.some(s=>s.id===cur.id))a.value=cur.id;else if(arr[0])a.value=arr[0].id;
+  const prev=arr.find(s=>s.id!==a.value&&s.status==='closed')||arr.find(s=>s.id!==a.value);if(prev)b.value=prev.id;
+  if(arr.length<2){document.getElementById('compareStatus').textContent='Cần ít nhất 2 phiên cùng kho để so sánh.';compareRowsCache=[];renderComparison();return}
+  loadComparison()
+};
+
+const _v69SessionMetaForCloud=sessionMetaForCloud;
+sessionMetaForCloud=function(s){
+  normalizeLegacyPausedSession(s);
+  const m=_v69SessionMetaForCloud(s);
+  m.status=s.status==='closed'?'closed':'active';
+  delete m.pausedAt;
+  return m
+};
+
+attachCloudSessionIndex=function(){
+  const r=cloudDb.ref(CLOUD_ROOT+'/sessionIndex');
+  const fn=async snap=>{
+    cloudPermitted=true;cloudIndexReady=true;
+    const remote=snap.val()||{},remoteIds=new Set(Object.keys(remote)),legacyToFix=[];
+    for(const [id,m] of Object.entries(remote)){
+      const old=state.sessions[id]||{id,counts:{},events:[]};
+      const next={...old,...m,id,counts:old.counts||{},events:old.events||[],cloudSynced:true};
+      if(normalizeLegacyPausedSession(next))legacyToFix.push(next);
+      state.sessions[id]=next
+    }
+    for(const [id,s] of Object.entries(state.sessions)){if(s.cloudSynced&&!remoteIds.has(id))delete state.sessions[id]}
+    const cur=currentSession();
+    if((!cur||(!remoteIds.has(cur.id)&&Object.keys(cur.counts||{}).length===0))&&remoteIds.size){
+      const arr=Object.values(state.sessions).filter(x=>x.cloudSynced).sort((a,b)=>String(b.updatedAt||b.createdAt).localeCompare(String(a.updatedAt||a.createdAt)));
+      const pick=arr.find(x=>x.status!=='closed')||arr[0];
+      if(pick){currentSessionId=pick.id;state.activeSessionId=pick.id}
+    }
+    saveState();renderAll();attachCloudActiveSession();
+    for(const s of legacyToFix){try{await cloudWriteSessionMeta(s)}catch{}}
+    if(!remoteIds.size&&currentSession())await cloudWriteSessionMeta(currentSession())
+  };
+  const er=e=>{console.error(e);cloudPermitted=false;cloudSetStatus('Firebase từ chối quyền','err')};
+  r.on('value',fn,er);cloudIndexDetach=()=>r.off('value',fn)
+};
+
+for(const s of Object.values(state.sessions||{}))normalizeLegacyPausedSession(s);
+saveState();
+renderAll();
+/* ===== END v6.9 ===== */
+
 /* ===== END v6.7 ===== */
 
 /* ===== END v6.6 ===== */
