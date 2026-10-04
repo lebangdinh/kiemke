@@ -2778,7 +2778,7 @@ renderAuditLog=function(){
 /* ===== END v6.11 ===== */
 
 /* ===== v6.12 UNKNOWN CODES / OUTSIDE CATALOG ===== */
-const APP_VERSION_612='6.13';
+const APP_VERSION_612='6.14';
 let unknownEditKey='';
 
 function applyAppVersion612(){
@@ -3145,6 +3145,127 @@ processScan=async function(raw){
   return _v613ProcessScan(raw)
 };
 /* ===== END v6.13 ===== */
+
+/* ===== v6.14 CROSS-WAREHOUSE COUNTS AS OVERAGE ===== */
+function sessionExtraItems(s=currentSession()){
+  if(!s)return {};
+  if(!s.extraItems||typeof s.extraItems!=='object'||Array.isArray(s.extraItems))s.extraItems={};
+  return s.extraItems
+}
+const _v614BaseSessionItems=sessionItems;
+sessionItems=function(s=currentSession()){
+  const base=_v614BaseSessionItems(s),extras=Object.values(sessionExtraItems(s));
+  const seen=new Set(base.map(x=>x.itemKey||makeItemKey(x.warehouseId,x.code)));
+  return base.concat(extras.filter(x=>!seen.has(x.itemKey||makeItemKey(x.warehouseId,x.code))))
+};
+findItemByKey=function(key,s=currentSession()){
+  key=String(key||'');
+  return sessionItems(s).find(x=>(x.itemKey||makeItemKey(x.warehouseId,x.code))===key)||null
+};
+findItemByCode=function(code,s=currentSession()){
+  code=String(code||'');
+  return sessionItems(s).find(x=>String(x.code)===code)||null
+};
+function catalogCurrentItem(code,s=currentSession()){
+  const wh=s?.warehouseId||LEGACY_WH;
+  return (sessionCatalog(s)?.items||[]).find(x=>String(x.code)===String(code)&&(x.warehouseId||LEGACY_WH)===wh)||null
+}
+function makeCrossExtraItem(s,code,matches){
+  const first=matches[0]||{},sourceNames=[...new Set(matches.map(x=>x.warehouseName||warehouseName(x.warehouseId)).filter(Boolean))];
+  return {
+    itemKey:makeItemKey(s.warehouseId,code),warehouseId:s.warehouseId,warehouseName:warehouseName(s.warehouseId),
+    code:String(code),name:first.name||('Mã '+code),category:first.category||'',group:first.group||'',manufacturer:first.manufacturer||'',
+    actualQty:0,convertedQty:0,totalQty:0,sellableQty:0,orderedQty:0,inTransit:0,
+    isCrossWarehouse:true,sourceWarehouseIds:[...new Set(matches.map(x=>x.warehouseId).filter(Boolean))],sourceWarehouseNames:sourceNames
+  }
+}
+function ensureCrossExtraItem(s,code,matches){
+  const key=makeItemKey(s.warehouseId,code),map=sessionExtraItems(s);
+  if(!map[key])map[key]=makeCrossExtraItem(s,code,matches);
+  else{
+    const fresh=makeCrossExtraItem(s,code,matches);
+    map[key]={...map[key],...fresh,itemKey:key,actualQty:0,convertedQty:0,totalQty:0,sellableQty:0}
+  }
+  s.updatedAt=nowIso();saveState();return map[key]
+}
+const _v614SessionMetaForCloud=sessionMetaForCloud;
+sessionMetaForCloud=function(s){
+  const m=_v614SessionMetaForCloud(s);m.extraItems=s?.extraItems||{};return m
+};
+
+/* Progress only counts expected in-stock codes; extras still appear in total checked and differences. */
+renderCountKpi=function(){
+  const s=currentSession(),list=scopedItems(s);let counted=0,countedExpected=0,eq=0,diff=0,units=0,expected=0;
+  for(const item of list){
+    const sys=itemSysQty(item),key=item.itemKey||makeItemKey(item.warehouseId,item.code),v=getCount(s,key);
+    if(sys>0)expected++;
+    if(v!==null){counted++;units+=v;if(sys>0)countedExpected++;const d=v-sys;if(Math.abs(d)<1e-9)eq++;else diff++}
+  }
+  document.getElementById('kpiCount').innerHTML=[['Mã đã kiểm',counted,''],['SL đã bắn / nhập',nfmt(units),''],['Khớp',eq,'ok'],['Chênh lệch',diff,'danger']].map(x=>`<div class="card kpi ${x[2]}"><div class="n">${x[1]}</div><div class="t">${x[0]}</div></div>`).join('');
+  const pct=expected?Math.min(100,countedExpected/expected*100):0;
+  document.getElementById('progressBar').style.width=pct+'%';
+  document.getElementById('progressText').textContent=`${countedExpected.toLocaleString('vi-VN')} / ${expected.toLocaleString('vi-VN')} mã có tồn • ${pct.toFixed(1)}%${counted>countedExpected?' • '+(counted-countedExpected)+' mã ngoài sổ':''}`
+};
+
+/* Cross-warehouse rows stay visible in the verification table, but they ARE counted as overage. */
+renderUnknowns=function(){
+  renderUnknownBadge();const el=document.getElementById('unknownTable');if(!el)return;const arr=filteredUnknowns();
+  if(!arr.length){el.innerHTML='<div class="empty">Chưa có mã cần xác minh trong phiên này.</div>';return}
+  el.innerHTML=`<table><thead><tr><th>Mã quét</th><th>Loại mã</th><th>Thuộc kho</th><th>Số lần</th><th>Kho đang kiểm</th><th>Ngành / Nhóm gốc</th><th>Phạm vi lúc quét</th><th>Quét lần đầu</th><th>Quét gần nhất</th><th>Thông tin sản phẩm</th><th>Trạng thái</th><th>Ghi chú</th><th>Xử lý</th></tr></thead><tbody>${arr.map(x=>`<tr class="${x.status==='pending'?'unknown-pending':x.status==='verified'?'unknown-verified':''}"><td><div class="unknown-code-card code">${esc(x.code||'')}</div><div class="tiny muted" title="${esc(x.raw||'')}">${esc((x.raw||'').slice(0,42))}</div></td><td>${recordKindBadge(x.recordKind||'unknown')}</td><td>${(x.recordKind||'unknown')==='crossWarehouse'?`<b>${esc((x.sourceWarehouseNames||[]).join(', ')||'—')}</b>`:'<span class="muted">Không xác định</span>'}</td><td><b>${Number(x.scans||0).toLocaleString('vi-VN')}</b><div class="tiny muted">${(x.recordKind||'unknown')==='crossWarehouse'?'đã cộng = THỪA':'không cộng tồn'}</div></td><td><b>${esc(x.warehouseName||warehouseName(x.warehouseId))}</b></td><td>${esc(x.sourceCategory||'—')}<div class="tiny muted">${esc(x.sourceGroup||'')}</div></td><td>${esc(x.scopeCategory||'Tất cả ngành')}<div class="tiny muted">${esc(x.scopeGroup||'Tất cả nhóm')}</div></td><td>${unknownActorHtml(x.firstBy,x.firstAt)}</td><td>${unknownActorHtml(x.lastBy,x.lastAt)}</td><td><b>${esc(x.productName||x.sourceProductName||'—')}</b><div class="tiny muted">${esc(x.manufacturer||x.sourceManufacturer||'')}</div></td><td>${unknownStatusBadge(x.status)}</td><td>${esc(x.note||'—')}</td><td><button class="btn outline" onclick="openUnknownEdit('${esc(x.key)}')">📝 Xác minh</button></td></tr>`).join('')}</tbody></table>`
+};
+const _v614UnknownRowsForExport=unknownRowsForExport;
+unknownRowsForExport=function(map){
+  return _v614UnknownRowsForExport(map).map((r,i)=>{
+    const x=Object.values(map||{}).sort((a,b)=>Number(a.firstAt||0)-Number(b.firstAt||0))[i]||{};
+    return {...r,'Xử lý trong kiểm kê hiện tại':(x.recordKind||'unknown')==='crossWarehouse'?'Đã cộng - báo THỪA':'Không cộng - chờ xác minh'}
+  })
+};
+
+/* Final scan policy: current-warehouse product = normal; cross-warehouse product = expected 0 and count as THỪA; truly unknown = verification only. */
+const _v614PreviousProcessScan=processScan;
+processScan=async function(raw){
+  const clean=String(raw||'').trim();if(!clean)return;
+  const s=currentSession();if(!s||!deviceCanCount())return;
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return;
+  const code=normalizeScan(clean,s);
+  if(!code)return _v614PreviousProcessScan(raw);
+  const own=catalogCurrentItem(code,s);
+  if(own)return _v614PreviousProcessScan(raw);
+  const cross=findCrossWarehouseMatches(code,s.warehouseId);
+  if(!cross.length)return _v614PreviousProcessScan(raw);
+  const t=Date.now();if(clean===lastScanValue&&t-lastScanAt<700)return;lastScanValue=clean;lastScanAt=t;
+  const rec=await recordCrossWarehouseScan(clean,code,cross);if(!rec)return;
+  const item=ensureCrossExtraItem(s,code,cross);
+  if(!scopeAllows(item,s)){
+    const box=document.getElementById('lastScan');box.className='last-scan bad';box.innerHTML='<b>⚠ Mã ngoài Ngành/Nhóm đang chọn</b><div class="small">'+esc(item.category)+' • '+esc(item.group)+'</div>';beep(false);showOutOfScopeScan(item,code);return
+  }
+  const key=item.itemKey,q=await v67AuthoritativeAdd(key,1,'scan-cross-warehouse-counted');if(q===null)return;
+  showRealtimeCountResult(item,q,'scan-cross-warehouse-counted');
+  const box=document.getElementById('lastScan');
+  if(box){const note=document.createElement('div');note.className='tiny muted';note.style.marginTop='5px';note.textContent='Mã gốc thuộc kho khác • hệ thống kho hiện tại = 0';box.appendChild(note)}
+};
+
+/* Excel result includes cross-warehouse extras with system qty 0 => THỪA. */
+exportSessionExcel=async function(id){
+  if(typeof XLSX==='undefined'){toast('Không tải được thư viện Excel','err');return}
+  const pack=await cloudFetchSessionData(id);if(!pack)return;
+  const {s,counts,events,cat,unknowns}=pack;
+  const base=(cat?.items||[]).filter(x=>(x.warehouseId||LEGACY_WH)===(s.warehouseId||LEGACY_WH));
+  const extras=Object.values(s.extraItems||{}),seen=new Set(base.map(x=>x.itemKey||makeItemKey(x.warehouseId,x.code)));
+  const items=base.concat(extras.filter(x=>!seen.has(x.itemKey||makeItemKey(x.warehouseId,x.code))));
+  const result=items.map(item=>{
+    const key=item.itemKey||makeItemKey(item.warehouseId,item.code),has=Object.prototype.hasOwnProperty.call(counts,key)||Object.prototype.hasOwnProperty.call(counts,item.code),raw=Object.prototype.hasOwnProperty.call(counts,key)?counts[key]:counts[item.code],v=has?Number(raw||0):(s.status==='closed'?0:null),d=v===null?null:v-itemSysQty(item);
+    return {'Kho':item.warehouseName||warehouseName(item.warehouseId),'Loại':item.isCrossWarehouse?'Mã thuộc kho khác':'Mã trong sổ','Kho gốc':item.isCrossWarehouse?(item.sourceWarehouseNames||[]).join(', '):'','Ngành hàng':item.category,'Nhóm hàng':item.group,'Mã sản phẩm':item.code,'Tên sản phẩm':item.name,'Nhà sản xuất':item.manufacturer,'SL hệ thống':itemSysQty(item),'SL kiểm kê':v===null?'':v,'Chênh lệch':d===null?'':d,'Trạng thái':d===null?'Chưa kiểm':Math.abs(d)<1e-9?'Khớp':d<0?'Thiếu':'Dư'}
+  });
+  const groupMap=new Map();for(const r of result){const k=r['Ngành hàng']+'|||'+r['Nhóm hàng'];if(!groupMap.has(k))groupMap.set(k,{'Ngành hàng':r['Ngành hàng'],'Nhóm hàng':r['Nhóm hàng'],'Số mã':0,'SL hệ thống':0,'SL kiểm kê':0,'Mã thiếu':0,'Mã dư':0,'Mã khớp':0});const g=groupMap.get(k);g['Số mã']++;g['SL hệ thống']+=Number(r['SL hệ thống']||0);g['SL kiểm kê']+=Number(r['SL kiểm kê']||0);if(r['Trạng thái']==='Thiếu')g['Mã thiếu']++;else if(r['Trạng thái']==='Dư')g['Mã dư']++;else if(r['Trạng thái']==='Khớp')g['Mã khớp']++}
+  const logs=events.map(e=>({'Thời gian':new Date(e.ts||e.at).toLocaleString('vi-VN',{hour12:false}),'Mã NV':e.employeeId||'','Nhân viên':e.name||'','Email':e.email||'','Kho':e.warehouseName||warehouseName(e.warehouseId),'Ngành hàng':e.category||'','Nhóm hàng':e.group||'','Mã sản phẩm':e.code||'','Tên sản phẩm':e.productName||'','Thao tác':e.action||'','Thay đổi':e.delta??'','SL sau':e.qtyAfter??'','Nguồn':e.source||''}));
+  const unknownRows=unknownRowsForExport(unknowns);
+  const wb=XLSX.utils.book_new();for(const [data,name] of [[result,'Ket qua'],[[...groupMap.values()],'Theo nhom'],[logs,'Nhat ky'],[unknownRows,'Ma can xac minh']]){const ws=XLSX.utils.json_to_sheet(data);XLSX.utils.book_append_sheet(wb,ws,name)}
+  XLSX.writeFile(wb,'kiem-ke-'+safeName(s.name)+'.xlsx');toast('Đã xuất Excel kết quả kiểm kê','ok')
+};
+applyAppVersion612();
+/* ===== END v6.14 ===== */
+
 
 
 
