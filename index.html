@@ -172,7 +172,7 @@
     }
 
   
-    .unknown-toolbar{display:grid;grid-template-columns:2fr 1fr auto;gap:10px;align-items:center}
+    .unknown-toolbar{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:center}
     .unknown-code-card{font-weight:950}
     .unknown-person b{display:block;font-size:11px}.unknown-person span{display:block;font-size:9px;color:#64748b}
     .unknown-pending{background:#fff7ed}.unknown-verified{background:#ecfdf3}
@@ -206,7 +206,7 @@
       <button class="tabbtn" data-tab="compare">📊 So sánh kỳ</button>
       <button class="tabbtn" data-tab="sessions">🗂️ Phiên kiểm kê</button>
       <button class="tabbtn" data-tab="log">🧾 Nhật ký</button>
-      <button class="tabbtn" data-tab="unknown">⚠️ Mã ngoài data <span id="unknownNavBadge" class="badge b-warn" style="margin-left:5px">0</span></button>
+      <button class="tabbtn" data-tab="unknown">⚠️ Mã cần xác minh <span id="unknownNavBadge" class="badge b-warn" style="margin-left:5px">0</span></button>
       <button class="tabbtn" data-tab="print">🖨️ A4 / PNG</button>
       <button class="tabbtn" data-tab="manager">🔐 Quản lý</button>
     </nav>
@@ -344,9 +344,9 @@
       <div class="card">
         <div class="row">
           <div>
-            <h3 style="margin:0">⚠️ Mã sản phẩm ngoài data tồn</h3>
+            <h3 style="margin:0">⚠️ Mã cần xác minh</h3>
             <div class="small muted" style="margin-top:4px">
-              Mã không có trong data tồn sẽ KHÔNG cộng vào kết quả kiểm kê, nhưng được lưu lại để nhân viên / quản lý xác minh.
+              Mã không có trong data tồn hoặc thuộc kho khác sẽ KHÔNG cộng vào kết quả kiểm kê hiện tại, nhưng được lưu lại để nhân viên / quản lý xác minh.
             </div>
           </div>
           <div class="spacer"></div>
@@ -354,6 +354,7 @@
         </div>
         <div class="unknown-toolbar" style="margin-top:12px">
           <input id="unknownSearch" class="wide" placeholder="Tìm mã / tên bổ sung / nhân viên…" oninput="renderUnknowns()">
+          <select id="unknownType" onchange="renderUnknowns()"><option value="">Tất cả loại mã</option><option value="unknown">Mã ngoài data</option><option value="crossWarehouse">Mã thuộc kho khác</option></select>
           <select id="unknownStatus" onchange="renderUnknowns()">
             <option value="">Tất cả trạng thái</option>
             <option value="pending">Chưa xác minh</option>
@@ -506,7 +507,7 @@
   <div id="unknownEditModal" class="modal">
     <div class="modalbox">
       <div class="row">
-        <div><h3 style="margin:0">📝 Xác minh mã ngoài data</h3><div id="unknownEditCode" class="code small" style="margin-top:5px"></div></div>
+        <div><h3 style="margin:0">📝 Xác minh mã cần kiểm tra</h3><div id="unknownEditCode" class="code small" style="margin-top:5px"></div></div>
         <div class="spacer"></div>
         <button class="btn outline" onclick="closeModal('unknownEditModal')">✕</button>
       </div>
@@ -2777,7 +2778,7 @@ renderAuditLog=function(){
 /* ===== END v6.11 ===== */
 
 /* ===== v6.12 UNKNOWN CODES / OUTSIDE CATALOG ===== */
-const APP_VERSION_612='6.12';
+const APP_VERSION_612='6.13';
 let unknownEditKey='';
 
 function applyAppVersion612(){
@@ -3086,6 +3087,65 @@ renderAll=function(){
   if(document.getElementById('tab-unknown')?.classList.contains('active'))renderUnknowns()
 };
 /* ===== END v6.12 ===== */
+/* ===== v6.13 CROSS-WAREHOUSE CODE TRACKING ===== */
+function recordKindLabel(kind){return kind==='crossWarehouse'?'Mã thuộc kho khác':'Mã ngoài data'}
+function recordKindBadge(kind){return kind==='crossWarehouse'?'<span class="badge b-danger">Mã thuộc kho khác</span>':'<span class="badge b-warn">Mã ngoài data</span>'}
+function findCrossWarehouseMatches(code,currentWarehouseId){
+  const all=sessionCatalog(currentSession())?.items||[];
+  return all.filter(x=>String(x.code)===String(code)&&(x.warehouseId||LEGACY_WH)!==(currentWarehouseId||LEGACY_WH))
+}
+function makeCrossWarehouseRecord(code,raw,s,matches){
+  const sc=getWorkScope(s),a=cloudActor(),now=Date.now();
+  const warehouses=[...new Map(matches.map(x=>[(x.warehouseId||LEGACY_WH),{id:x.warehouseId||LEGACY_WH,name:x.warehouseName||warehouseName(x.warehouseId||LEGACY_WH)}])).values()];
+  const first=matches[0]||{};
+  return {recordKind:'crossWarehouse',code:String(code||''),raw:String(raw||''),warehouseId:s.warehouseId||'',warehouseName:warehouseName(s.warehouseId),sourceWarehouses:warehouses,sourceWarehouseIds:warehouses.map(x=>x.id),sourceWarehouseNames:warehouses.map(x=>x.name),sourceCategory:first.category||'',sourceGroup:first.group||'',sourceProductName:first.name||'',sourceManufacturer:first.manufacturer||'',scopeCategory:sc.category||'',scopeGroup:sc.group||'',firstAt:now,lastAt:now,firstBy:a,lastBy:a,scans:1,status:'pending',productName:first.name||'',manufacturer:first.manufacturer||'',note:'',verifiedAt:null,verifiedBy:null}
+}
+async function recordCrossWarehouseScan(raw,code,matches){
+  const s=currentSession();if(!s||!deviceCanCount())return null;
+  if(typeof ensureWorkerReady==='function'&&!ensureWorkerReady())return null;
+  const key=unknownKey('cross::'+code),a=cloudActor(),sc=getWorkScope(s),now=Date.now(),map=sessionUnknowns(s),old=map[key];
+  const warehouses=[...new Map(matches.map(x=>[(x.warehouseId||LEGACY_WH),{id:x.warehouseId||LEGACY_WH,name:x.warehouseName||warehouseName(x.warehouseId||LEGACY_WH)}])).values()];
+  const first=matches[0]||{};
+  let rec=old?{...old,recordKind:'crossWarehouse',code:String(code),raw:String(raw||''),warehouseId:s.warehouseId||'',warehouseName:warehouseName(s.warehouseId),sourceWarehouses:warehouses,sourceWarehouseIds:warehouses.map(x=>x.id),sourceWarehouseNames:warehouses.map(x=>x.name),sourceCategory:first.category||old.sourceCategory||'',sourceGroup:first.group||old.sourceGroup||'',sourceProductName:first.name||old.sourceProductName||'',sourceManufacturer:first.manufacturer||old.sourceManufacturer||'',productName:old.productName||first.name||'',manufacturer:old.manufacturer||first.manufacturer||'',lastAt:now,lastBy:a,scans:Number(old.scans||0)+1,scopeCategory:sc.category||old.scopeCategory||'',scopeGroup:sc.group||old.scopeGroup||''}:makeCrossWarehouseRecord(code,raw,s,matches);
+  map[key]=rec;s.updatedAt=nowIso();saveState();renderUnknowns();renderUnknownBadge();
+  if(cloudDb&&cloudUser&&cloudPermitted){
+    try{
+      await cloudWriteSessionMeta(s);
+      const ref=cloudDb.ref(CLOUD_ROOT+'/sessions/'+s.id+'/unknowns/'+key);
+      const tx=await ref.transaction(cur=>{
+        if(!cur)return makeCrossWarehouseRecord(code,raw,s,matches);
+        return {...cur,recordKind:'crossWarehouse',code:String(code),raw:String(raw||cur.raw||''),warehouseId:s.warehouseId||cur.warehouseId||'',warehouseName:warehouseName(s.warehouseId),sourceWarehouses:warehouses,sourceWarehouseIds:warehouses.map(x=>x.id),sourceWarehouseNames:warehouses.map(x=>x.name),sourceCategory:first.category||cur.sourceCategory||'',sourceGroup:first.group||cur.sourceGroup||'',sourceProductName:first.name||cur.sourceProductName||'',sourceManufacturer:first.manufacturer||cur.sourceManufacturer||'',productName:cur.productName||first.name||'',manufacturer:cur.manufacturer||first.manufacturer||'',scopeCategory:sc.category||cur.scopeCategory||'',scopeGroup:sc.group||cur.scopeGroup||'',lastAt:Date.now(),lastBy:a,scans:Number(cur.scans||0)+1}
+      });
+      if(tx.committed&&tx.snapshot.val()){rec=tx.snapshot.val();mergeUnknownLocal(key,rec)}
+      const item={itemKey:'crossWarehouse::'+code,warehouseId:s.warehouseId,warehouseName:warehouseName(s.warehouseId),code,name:first.name||'Mã thuộc kho khác',category:first.category||'',group:first.group||'',manufacturer:first.manufacturer||''};
+      await cloudRecordEvent(s,item,{source:'scan-cross-warehouse',action:'crossWarehouse',delta:1,qtyBefore:null,qtyAfter:Number(rec.scans||1)})
+    }catch(e){console.error(e);toast('Mã kho khác đã lưu trên máy, đang chờ đồng bộ Cloud','err')}
+  }
+  renderAll();return rec
+}
+filteredUnknowns=function(){
+  const s=currentSession(),q=slug(document.getElementById('unknownSearch')?.value||''),status=document.getElementById('unknownStatus')?.value||'',type=document.getElementById('unknownType')?.value||'';
+  return Object.entries(sessionUnknowns(s)).map(([key,v])=>({key,...v})).filter(x=>(!status||x.status===status)).filter(x=>(!type||(x.recordKind||'unknown')===type)).filter(x=>(!q||slug([x.code,x.productName,x.manufacturer,x.note,...(x.sourceWarehouseNames||[]),x.sourceProductName,x.sourceCategory,x.sourceGroup,actorLabel(x.firstBy),actorLabel(x.lastBy)].join(' ')).includes(q))).sort((a,b)=>Number(b.lastAt||0)-Number(a.lastAt||0))
+};
+renderUnknowns=function(){
+  renderUnknownBadge();const el=document.getElementById('unknownTable');if(!el)return;const arr=filteredUnknowns();
+  if(!arr.length){el.innerHTML='<div class="empty">Chưa có mã cần xác minh trong phiên này.</div>';return}
+  el.innerHTML=`<table><thead><tr><th>Mã quét</th><th>Loại mã</th><th>Thuộc kho</th><th>Số lần</th><th>Kho đang kiểm</th><th>Ngành / Nhóm gốc</th><th>Phạm vi lúc quét</th><th>Quét lần đầu</th><th>Quét gần nhất</th><th>Thông tin sản phẩm</th><th>Trạng thái</th><th>Ghi chú</th><th>Xử lý</th></tr></thead><tbody>${arr.map(x=>`<tr class="${x.status==='pending'?'unknown-pending':x.status==='verified'?'unknown-verified':''}"><td><div class="unknown-code-card code">${esc(x.code||'')}</div><div class="tiny muted" title="${esc(x.raw||'')}">${esc((x.raw||'').slice(0,42))}</div></td><td>${recordKindBadge(x.recordKind||'unknown')}</td><td>${(x.recordKind||'unknown')==='crossWarehouse'?`<b>${esc((x.sourceWarehouseNames||[]).join(', ')||'—')}</b>`:'<span class="muted">Không xác định</span>'}</td><td><b>${Number(x.scans||0).toLocaleString('vi-VN')}</b><div class="tiny muted">không cộng tồn</div></td><td><b>${esc(x.warehouseName||warehouseName(x.warehouseId))}</b></td><td>${esc(x.sourceCategory||'—')}<div class="tiny muted">${esc(x.sourceGroup||'')}</div></td><td>${esc(x.scopeCategory||'Tất cả ngành')}<div class="tiny muted">${esc(x.scopeGroup||'Tất cả nhóm')}</div></td><td>${unknownActorHtml(x.firstBy,x.firstAt)}</td><td>${unknownActorHtml(x.lastBy,x.lastAt)}</td><td><b>${esc(x.productName||x.sourceProductName||'—')}</b><div class="tiny muted">${esc(x.manufacturer||x.sourceManufacturer||'')}</div></td><td>${unknownStatusBadge(x.status)}</td><td>${esc(x.note||'—')}</td><td><button class="btn outline" onclick="openUnknownEdit('${esc(x.key)}')">📝 Xác minh</button></td></tr>`).join('')}</tbody></table>`
+};
+openUnknownEdit=function(key){
+  const x=sessionUnknowns()[key];if(!x)return;unknownEditKey=key;document.getElementById('unknownEditCode').textContent=x.code||'';document.getElementById('unknownEditName').value=x.productName||x.sourceProductName||'';document.getElementById('unknownEditManufacturer').value=x.manufacturer||x.sourceManufacturer||'';document.getElementById('unknownEditStatus').value=x.status||'pending';document.getElementById('unknownEditNote').value=x.note||'';const sourceWh=(x.sourceWarehouseNames||[]).join(', ');document.getElementById('unknownEditMeta').innerHTML=`Loại: <b>${esc(recordKindLabel(x.recordKind||'unknown'))}</b><br>${(x.recordKind||'unknown')==='crossWarehouse'?`Thuộc kho: <b>${esc(sourceWh||'—')}</b><br>`:''}Kho đang kiểm: <b>${esc(x.warehouseName||warehouseName(x.warehouseId))}</b><br>Phạm vi lúc quét: <b>${esc(x.scopeCategory||'Tất cả ngành')}</b> → <b>${esc(x.scopeGroup||'Tất cả nhóm')}</b><br>Số lần quét: <b>${Number(x.scans||0)}</b> • Lần cuối: <b>${esc(actorLabel(x.lastBy))}</b>`;openModal('unknownEditModal')
+};
+unknownRowsForExport=function(map){
+  return Object.values(map||{}).sort((a,b)=>Number(a.firstAt||0)-Number(b.firstAt||0)).map(x=>({'Loại mã':recordKindLabel(x.recordKind||'unknown'),'Trạng thái':unknownStatusLabel(x.status),'Mã quét':x.code||'','Chuỗi quét gốc':x.raw||'','Số lần quét':Number(x.scans||0),'Kho đang kiểm':x.warehouseName||warehouseName(x.warehouseId),'Mã thuộc kho khác':(x.recordKind||'unknown')==='crossWarehouse'?(x.sourceWarehouseNames||[]).join(', '):'','Ngành hàng gốc':x.sourceCategory||'','Nhóm hàng gốc':x.sourceGroup||'','Tên sản phẩm gốc':x.sourceProductName||'','Nhà sản xuất gốc':x.sourceManufacturer||'','Ngành hàng đang chọn':x.scopeCategory||'Tất cả ngành','Nhóm hàng đang chọn':x.scopeGroup||'Tất cả nhóm','Tên sản phẩm bổ sung':x.productName||'','Nhà sản xuất / Hãng':x.manufacturer||'','Lần đầu quét':x.firstAt?new Date(x.firstAt).toLocaleString('vi-VN',{hour12:false}):'','Mã NV người quét đầu':x.firstBy?.employeeId||'','Người quét đầu':x.firstBy?.name||'','Email người quét đầu':x.firstBy?.email||'','Lần cuối quét':x.lastAt?new Date(x.lastAt).toLocaleString('vi-VN',{hour12:false}):'','Mã NV người quét cuối':x.lastBy?.employeeId||'','Người quét cuối':x.lastBy?.name||'','Email người quét cuối':x.lastBy?.email||'','Người xác minh':actorLabel(x.verifiedBy),'Thời gian xác minh':x.verifiedAt?new Date(x.verifiedAt).toLocaleString('vi-VN',{hour12:false}):'','Ghi chú':x.note||''}))
+};
+const _v613ProcessScan=processScan;
+processScan=async function(raw){
+  const clean=String(raw||'').trim();if(!clean)return;const s=currentSession();if(!s)return;const normalized=normalizeScan(clean,s);
+  if(normalized){const inCurrent=findItemByCode(normalized,s);if(inCurrent)return _v613ProcessScan(raw);const cross=findCrossWarehouseMatches(normalized,s.warehouseId);if(cross.length){const t=Date.now();if(clean===lastScanValue&&t-lastScanAt<700)return;lastScanValue=clean;lastScanAt=t;const rec=await recordCrossWarehouseScan(clean,normalized,cross);if(!rec)return;const first=cross[0],box=document.getElementById('lastScan');box.className='last-scan bad';box.innerHTML=`<b>⚠️ MÃ THUỘC KHO KHÁC • ĐÃ GHI NHẬN</b><div class="small" style="margin-top:4px"><span class="code">${esc(normalized)}</span> • ${esc(first.name||'')}</div><div class="count-result-card over" style="margin-top:9px"><div class="count-result-main"><span class="status-big">KHÔNG CỘNG VÀO KHO HIỆN TẠI</span></div><div class="small">Thuộc kho: <b>${esc((rec.sourceWarehouseNames||[]).join(', '))}</b><br>Số lần quét trong phiên: <b>${Number(rec.scans||1)}</b></div></div><div class="scan-quick-actions"><button class="btn outline" onclick="switchTab('unknown')">⚠️ Xem Mã cần xác minh</button></div>`;beep(false);try{navigator.vibrate?.([100,50,100])}catch{}toast('⚠ Mã thuộc kho khác • đã lưu để kiểm tra','err');return}}
+  return _v613ProcessScan(raw)
+};
+/* ===== END v6.13 ===== */
+
 
 
 
